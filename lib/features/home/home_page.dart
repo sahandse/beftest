@@ -345,7 +345,6 @@ class _HomePageState extends State<HomePage> {
         peer: device.alias,
         filesCount: files.length,
       );
-      final total = files.fold<int>(0, (sum, file) => sum + file.size);
       final sent = <String, int>{};
 
       await _transfer.send(
@@ -357,7 +356,6 @@ class _HomePageState extends State<HomePage> {
         onProgress: (id, value, fileTotal) {
           sent[id] = value;
           _transferSession.updateProgress(id, value, fileTotal);
-          final done = sent.values.fold<int>(0, (a, b) => a + b);
           String currentName = 'در حال انتقال';
           for (final file in files) {
             if (file.id == id) {

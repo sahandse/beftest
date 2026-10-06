@@ -18,6 +18,8 @@ class SendPage extends StatelessWidget {
   final bool sending;
   final double progress;
   final Future<void> Function(NearbyDevice device, SendCategory category) onSend;
+  final List<String> sharedPaths;
+  final Future<void> Function(NearbyDevice device, List<String> paths)? onSendShared;
 
   const SendPage({
     super.key,
@@ -25,6 +27,8 @@ class SendPage extends StatelessWidget {
     required this.sending,
     required this.progress,
     required this.onSend,
+    this.sharedPaths = const [],
+    this.onSendShared,
   });
 
   IconData _iconFor(SendCategory category) {
@@ -107,6 +111,28 @@ class SendPage extends StatelessWidget {
                 );
               },
             ),
+            if (sharedPaths.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  color: cs.secondaryContainer,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.ios_share_rounded),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '${sharedPaths.length} فایل از Share آماده ارسال است',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 28),
             Row(
               children: [
@@ -159,7 +185,14 @@ class SendPage extends StatelessWidget {
                   child: _DeviceCard(
                     device: device,
                     disabled: sending,
-                    onSend: (category) => onSend(device, category),
+                    onSend: (category) {
+                      if (sharedPaths.isNotEmpty && onSendShared != null) {
+                        onSendShared!(device, sharedPaths);
+                      } else {
+                        onSend(device, category);
+                      }
+                    },
+                    hasSharedFiles: sharedPaths.isNotEmpty,
                   ),
                 ),
               ),
@@ -208,11 +241,13 @@ class _DeviceCard extends StatelessWidget {
   final NearbyDevice device;
   final bool disabled;
   final ValueChanged<SendCategory> onSend;
+  final bool hasSharedFiles;
 
   const _DeviceCard({
     required this.device,
     required this.disabled,
     required this.onSend,
+    required this.hasSharedFiles,
   });
 
   Future<void> _pickCategory(BuildContext context) async {
@@ -289,7 +324,15 @@ class _DeviceCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
-        onTap: disabled ? null : () => _pickCategory(context),
+        onTap: disabled
+            ? null
+            : () {
+                if (hasSharedFiles) {
+                  onSend(SendCategory.files);
+                } else {
+                  _pickCategory(context);
+                }
+              },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(

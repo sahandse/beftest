@@ -7,6 +7,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/app_settings.dart';
 import '../../core/share_intent_service.dart';
+import '../../core/storage_guard.dart';
+import '../../core/trusted_devices_store.dart';
 import '../../core/transfer_background_service.dart';
 import '../../core/transfer_notifications.dart';
 import '../../core/transfer_history_store.dart';
@@ -37,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   final _historyStore = TransferHistoryStore();
   final _uuid = const Uuid();
   final _shareIntent = ShareIntentService();
+  final _trustedDevices = TrustedDevicesStore();
 
   List<NearbyDevice> _devices = const [];
   bool _sending = false;
@@ -67,7 +70,38 @@ class _HomePageState extends State<HomePage> {
   Future<void> _startNetwork() async {
     _server.onIncomingRequest = (incoming) async {
       if (!mounted) return false;
-      final decision = await showDialog<bool>(
+
+      final storage = await StorageGuard.checkForIncoming(incoming.totalSize);
+      if (!mounted) return false;
+
+      if (storage.known && !storage.enough) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            icon: const Icon(Icons.storage_rounded),
+            title: const Text('فضای کافی نیست'),
+            content: Text(
+              'برای این انتقال حداقل ${_sizeText(storage.requiredBytes)} فضا لازم است، '
+              'اما فقط ${_sizeText(storage.freeBytes)} فضای آزاد داری.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('باشه'),
+              ),
+            ],
+          ),
+        );
+        return false;
+      }
+
+      if (incoming.senderFingerprint.isNotEmpty &&
+          await _trustedDevices.contains(incoming.senderFingerprint)) {
+        return true;
+      }
+
+      if (!mounted) return false;
+      final decision = await showDialog<int>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
@@ -80,6 +114,10 @@ class _HomePageState extends State<HomePage> {
               Text('${incoming.files.length} فایل'),
               const SizedBox(height: 6),
               Text('حجم کل: ${_sizeText(incoming.totalSize)}'),
+              if (storage.known) ...[
+                const SizedBox(height: 6),
+                Text('فضای آزاد: ${_sizeText(storage.freeBytes)}'),
+              ],
               const SizedBox(height: 14),
               ...incoming.files.take(4).map(
                     (file) => Padding(
@@ -95,18 +133,33 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: () => Navigator.pop(dialogContext, 0),
               child: const Text('رد'),
             ),
+            TextButton(
+              onPressed: incoming.senderFingerprint.isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, 2),
+              child: const Text('اعتماد و دریافت'),
+            ),
             FilledButton.icon(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: () => Navigator.pop(dialogContext, 1),
               icon: const Icon(Icons.download_rounded),
               label: const Text('دریافت'),
             ),
           ],
         ),
       );
-      return decision ?? false;
+
+      if (decision == 2 && incoming.senderFingerprint.isNotEmpty) {
+        await _trustedDevices.trust(
+          fingerprint: incoming.senderFingerprint,
+          alias: incoming.senderAlias,
+        );
+        return true;
+      }
+
+      return decision == 1;
     };
 
     _server.onIncomingComplete = (event) async {

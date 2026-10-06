@@ -40,6 +40,7 @@ class TransferService {
     required List<TransferFile> files,
     String? pin,
     required void Function(String fileId, int sent, int total) onProgress,
+    void Function(String fileId, TransferStatus status)? onStatus,
   }) async {
     final prepared = await _client.prepareUpload(
       device: device,
@@ -56,16 +57,45 @@ class TransferService {
     if (sessionId.isEmpty) return;
 
     try {
+      Object? firstError;
+
       for (final file in files) {
         final token = tokens[file.id]?.toString();
-        if (token == null || token.isEmpty) continue;
-        await _client.uploadFile(
-          device: device,
-          sessionId: sessionId,
-          file: file,
-          token: token,
-          onProgress: (sent, total) => onProgress(file.id, sent, total),
-        );
+        if (token == null || token.isEmpty) {
+          onStatus?.call(file.id, TransferStatus.failed);
+          firstError ??= StateError('Missing upload token for ${file.id}');
+          continue;
+        }
+
+        onStatus?.call(file.id, TransferStatus.transferring);
+
+        try {
+          if (device.supportsResume) {
+            await _client.uploadFileResumable(
+              device: device,
+              sessionId: sessionId,
+              file: file,
+              token: token,
+              onProgress: (sent, total) => onProgress(file.id, sent, total),
+            );
+          } else {
+            await _client.uploadFile(
+              device: device,
+              sessionId: sessionId,
+              file: file,
+              token: token,
+              onProgress: (sent, total) => onProgress(file.id, sent, total),
+            );
+          }
+          onStatus?.call(file.id, TransferStatus.completed);
+        } catch (error) {
+          firstError ??= error;
+          onStatus?.call(file.id, TransferStatus.failed);
+        }
+      }
+
+      if (firstError != null) {
+        throw firstError;
       }
     } catch (_) {
       await _client.cancel(device: device, sessionId: sessionId);

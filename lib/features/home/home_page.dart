@@ -9,6 +9,7 @@ import '../../core/app_settings.dart';
 import '../../core/share_intent_service.dart';
 import '../../core/storage_guard.dart';
 import '../../core/trusted_devices_store.dart';
+import '../../core/tls_identity.dart';
 import '../../core/transfer_background_service.dart';
 import '../../core/transfer_notifications.dart';
 import '../../core/transfer_session_controller.dart';
@@ -39,7 +40,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _discovery = DiscoveryService();
   final _server = TransferServer();
-  final _transfer = TransferService();
+  late final TlsIdentity _identity;
+  late final TransferService _transfer;
   final _historyStore = TransferHistoryStore();
   final _uuid = const Uuid();
   final _shareIntent = ShareIntentService();
@@ -57,8 +59,16 @@ class _HomePageState extends State<HomePage> {
       setState(() => _devices = devices);
     });
     TransferBackgroundService.initialize();
-    _startNetwork();
-    _startShareIntent();
+    _initializeSecureTransfer();
+  }
+
+  Future<void> _initializeSecureTransfer() async {
+    _identity = await const TlsIdentityStore().loadOrCreate();
+    await widget.settings.setFingerprint(_identity.fingerprint);
+    _transfer = TransferService(identity: _identity);
+    await _startNetwork();
+    await _startShareIntent();
+    if (mounted) setState(() {});
   }
 
   Future<void> _startShareIntent() async {
@@ -187,12 +197,13 @@ class _HomePageState extends State<HomePage> {
     try {
       await _server.start(
         alias: widget.settings.alias,
-        fingerprint: widget.settings.fingerprint,
+        identity: _identity,
         pin: widget.settings.pinEnabled ? widget.settings.pin : null,
       );
       await _discovery.start(
         alias: widget.settings.alias,
-        fingerprint: widget.settings.fingerprint,
+        fingerprint: _identity.fingerprint,
+        identity: _identity,
       );
     } catch (_) {}
   }

@@ -52,7 +52,7 @@ class _ReceivePageState extends State<ReceivePage> {
         'fingerprint': widget.settings.fingerprint,
         'ip': ip ?? '',
         'port': 53317,
-        'protocol': 'http',
+        'protocol': 'https',
         'version': '2.2',
         'features': const ['resume-v1', 'queue-v1'],
       });

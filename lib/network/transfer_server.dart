@@ -90,6 +90,9 @@ class TransferServer {
         } else if (path == '/api/befrest/v1/resume/upload' &&
             request.method == 'POST') {
           await _handleResumeUpload(request);
+        } else if (path == '/api/befrest/v1/session/add' &&
+            request.method == 'POST') {
+          await _handleSessionAdd(request);
         } else if (path == '/api/localsend/v2/cancel' &&
             request.method == 'POST') {
           await _handleCancel(request);
@@ -200,6 +203,7 @@ class TransferServer {
       senderAlias: senderAlias,
       sourceIp: sourceIp,
       files: expected,
+      touchedAt: DateTime.now(),
     );
 
     request.response.headers.contentType = ContentType.json;
@@ -297,6 +301,9 @@ class TransferServer {
         success: true,
       ),
     );
+
+    session.files.remove(fileId);
+    session.touchedAt = DateTime.now();
 
     request.response.statusCode = HttpStatus.noContent;
     await request.response.close();
@@ -464,11 +471,62 @@ class TransferServer {
       ),
     );
 
-    if (session.files.isEmpty) {
-      _sessions.remove(sessionId);
-    }
+    session.touchedAt = DateTime.now();
 
     request.response.statusCode = HttpStatus.noContent;
+    await request.response.close();
+  }
+
+
+  Future<void> _handleSessionAdd(HttpRequest request) async {
+    final sessionId = request.uri.queryParameters['sessionId'];
+    if (sessionId == null || sessionId.isEmpty) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final session = _sessions[sessionId];
+    final remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
+    if (session == null ||
+        session.sourceIp != remoteIp ||
+        DateTime.now().difference(session.touchedAt) >
+            const Duration(minutes: 10)) {
+      _sessions.remove(sessionId);
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+      return;
+    }
+
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    final files = (data['files'] as Map?)?.cast<String, dynamic>() ?? {};
+    if (files.isEmpty) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final tokens = <String, String>{};
+    for (final entry in files.entries) {
+      final meta = (entry.value as Map).cast<String, dynamic>();
+      final token = _randomToken(32);
+      tokens[entry.key] = token;
+      session.files[entry.key] = _ExpectedFile(
+        id: entry.key,
+        token: token,
+        fileName: (meta['fileName'] ?? entry.key).toString(),
+        size: int.tryParse('${meta['size']}') ?? 0,
+        sha256: meta['sha256']?.toString(),
+      );
+    }
+
+    session.touchedAt = DateTime.now();
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({
+      'sessionId': sessionId,
+      'files': tokens,
+    }));
     await request.response.close();
   }
 
@@ -500,11 +558,13 @@ class _Session {
   final String senderAlias;
   final String sourceIp;
   final Map<String, _ExpectedFile> files;
+  DateTime touchedAt;
 
   _Session({
     required this.senderAlias,
     required this.sourceIp,
     required this.files,
+    required this.touchedAt,
   });
 }
 

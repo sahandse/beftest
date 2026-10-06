@@ -18,6 +18,7 @@ import '../../network/transfer_server.dart';
 import '../../network/transfer_service.dart';
 import '../receive/receive_page.dart';
 import '../send/send_page.dart';
+import '../send/apps_picker_page.dart';
 import '../settings/settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -226,6 +227,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<List<String>> _pickPaths(SendCategory category) async {
+    if (category == SendCategory.apps) {
+      final path = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const AppsPickerPage(),
+        ),
+      );
+      return path == null || path.isEmpty ? const [] : [path];
+    }
+
     if (category == SendCategory.text) {
       final text = await _askText();
       if (text == null || text.isEmpty) return const [];

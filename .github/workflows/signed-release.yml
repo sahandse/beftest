@@ -28,8 +28,23 @@ jobs:
 
       - name: Align Android SDK
         run: |
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
-          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/' android/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+          s = s.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 35")
+          if "isCoreLibraryDesugaringEnabled = true" not in s:
+              s = s.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                  1,
+              )
+          dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
+          if dep not in s:
+              s += '\n\ndependencies {\n    ' + dep + '\n}\n'
+          p.write_text(s)
+          PY
 
       - name: Restore release keystore
         env:

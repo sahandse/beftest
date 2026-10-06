@@ -538,6 +538,13 @@ class _TransferQueuePanel extends StatelessWidget {
                 ),
               ],
             ),
+          ] else if (controller.items.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: controller.clear,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('فایل بیشتری بفرست'),
+            ),
           ],
           const SizedBox(height: 12),
           ...controller.items.map(

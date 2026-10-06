@@ -39,6 +39,8 @@ class TransferClient {
               'size': file.size,
               'fileType': file.mimeType,
               'sha256': file.sha256,
+              if (file.relativePath != null)
+                'relativePath': file.relativePath,
             },
         },
       }));
@@ -129,6 +131,8 @@ class TransferClient {
               'size': file.size,
               'fileType': file.mimeType,
               'sha256': file.sha256,
+              if (file.relativePath != null)
+                'relativePath': file.relativePath,
             },
         },
       }));

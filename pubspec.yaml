@@ -20,6 +20,9 @@ dependencies:
   receive_sharing_intent: ^1.9.0
   flutter_foreground_task: ^10.0.0
   flutter_local_notifications: ^22.3.1
+  disk_space_2: ^1.0.13
+  installed_apps: ^2.1.1
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

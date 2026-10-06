@@ -97,6 +97,10 @@ class _HomePageState extends State<HomePage> {
         return false;
       }
 
+      if (widget.settings.isQuickReceiveActive) {
+        return true;
+      }
+
       if (incoming.senderFingerprint.isNotEmpty &&
           await _trustedDevices.contains(incoming.senderFingerprint)) {
         return true;

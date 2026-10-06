@@ -329,13 +329,14 @@ class _HomePageState extends State<HomePage> {
     }
 
     final result = await FilePicker.pickFiles(
-      allowMultiple: true,
       type: type,
       allowedExtensions: extensions,
-      withData: false,
     );
 
-    return result?.paths.whereType<String>().toList() ?? const [];
+    return result
+        .map((file) => file.path)
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   Future<String?> _askForPin() async {

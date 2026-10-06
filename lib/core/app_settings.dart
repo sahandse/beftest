@@ -44,6 +44,9 @@ class AppSettings {
   Future<void> setAlias(String value) =>
       prefs.setString(_aliasKey, value.trim().isEmpty ? 'گوشی من' : value.trim());
 
+  Future<void> setFingerprint(String value) =>
+      prefs.setString(_fingerprintKey, value);
+
   Future<void> setPinEnabled(bool value) =>
       prefs.setBool(_pinEnabledKey, value);
 

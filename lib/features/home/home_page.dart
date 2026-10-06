@@ -6,6 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/app_settings.dart';
+import '../../core/share_intent_service.dart';
+import '../../core/transfer_background_service.dart';
+import '../../core/transfer_notifications.dart';
 import '../../core/transfer_history_store.dart';
 import '../../network/discovery_service.dart';
 import '../../network/nearby_device.dart';
@@ -33,8 +36,10 @@ class _HomePageState extends State<HomePage> {
   final _transfer = TransferService();
   final _historyStore = TransferHistoryStore();
   final _uuid = const Uuid();
+  final _shareIntent = ShareIntentService();
 
   List<NearbyDevice> _devices = const [];
+  List<String> _sharedPaths = const [];
   bool _sending = false;
   double _progress = 0;
 
@@ -45,7 +50,20 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       setState(() => _devices = devices);
     });
+    TransferBackgroundService.initialize();
     _startNetwork();
+    _startShareIntent();
+  }
+
+  Future<void> _startShareIntent() async {
+    await _shareIntent.start((paths) {
+      if (!mounted) return;
+      setState(() => _sharedPaths = paths);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openSend(sharedPaths: paths);
+      });
+    });
   }
 
   Future<void> _startNetwork() async {
@@ -245,8 +263,9 @@ class _HomePageState extends State<HomePage> {
     NearbyDevice device,
     SendCategory category, {
     String? pin,
+    List<String>? providedPaths,
   }) async {
-    final paths = await _pickPaths(category);
+    final paths = providedPaths ?? await _pickPaths(category);
     if (paths.isEmpty) return;
 
     setState(() {
@@ -256,6 +275,10 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final files = await _transfer.buildFiles(paths);
+      await TransferBackgroundService.start(
+        peer: device.alias,
+        filesCount: files.length,
+      );
       final total = files.fold<int>(0, (sum, file) => sum + file.size);
       final sent = <String, int>{};
 
@@ -265,9 +288,21 @@ class _HomePageState extends State<HomePage> {
         fingerprint: widget.settings.fingerprint,
         files: files,
         pin: pin,
-        onProgress: (id, value, _) {
+        onProgress: (id, value, fileTotal) {
           sent[id] = value;
           final done = sent.values.fold<int>(0, (a, b) => a + b);
+          String currentName = 'در حال انتقال';
+          for (final file in files) {
+            if (file.id == id) {
+              currentName = file.fileName;
+              break;
+            }
+          }
+          TransferBackgroundService.updateProgress(
+            fileName: currentName,
+            sent: value,
+            total: fileTotal,
+          );
           if (mounted) {
             setState(() => _progress = total == 0 ? 0 : done / total);
           }
@@ -288,6 +323,13 @@ class _HomePageState extends State<HomePage> {
         );
       }
 
+      await TransferNotifications.completed(
+        peer: device.alias,
+        filesCount: files.length,
+      );
+      if (providedPaths != null && mounted) {
+        setState(() => _sharedPaths = const []);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ارسال به ${device.alias} کامل شد')),
@@ -297,16 +339,23 @@ class _HomePageState extends State<HomePage> {
         final entered = await _askForPin();
         if (entered != null && entered.isNotEmpty) {
           setState(() => _sending = false);
-          await _sendTo(device, category, pin: entered);
+          await _sendTo(
+            device,
+            category,
+            pin: entered,
+            providedPaths: providedPaths,
+          );
           return;
         }
       }
+      await TransferNotifications.failed(peer: device.alias);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('انتقال انجام نشد. دوباره تلاش کن.')),
+          const SnackBar(content: Text('انتقال کامل نشد؛ امکان ادامه وجود دارد.')),
         );
       }
     } finally {
+      await TransferBackgroundService.stop();
       if (mounted) {
         setState(() {
           _sending = false;
@@ -325,7 +374,7 @@ class _HomePageState extends State<HomePage> {
     return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
-  void _openSend() {
+  void _openSend({List<String> sharedPaths = const []}) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -336,6 +385,12 @@ class _HomePageState extends State<HomePage> {
             sending: _sending,
             progress: _progress,
             onSend: _sendTo,
+            sharedPaths: sharedPaths,
+            onSendShared: (device, paths) => _sendTo(
+              device,
+              SendCategory.files,
+              providedPaths: paths,
+            ),
           ),
         ),
       ),
@@ -356,6 +411,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _shareIntent.dispose();
     _discovery.dispose();
     _server.stop();
     super.dispose();

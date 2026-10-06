@@ -21,11 +21,13 @@ class IncomingRequestFile {
 
 class IncomingRequest {
   final String senderAlias;
+  final String senderFingerprint;
   final String sourceIp;
   final List<IncomingRequestFile> files;
 
   const IncomingRequest({
     required this.senderAlias,
+    required this.senderFingerprint,
     required this.sourceIp,
     required this.files,
   });
@@ -136,6 +138,7 @@ class TransferServer {
     final data = jsonDecode(body) as Map<String, dynamic>;
     final info = (data['info'] as Map?)?.cast<String, dynamic>() ?? {};
     final senderAlias = (info['alias'] ?? 'دستگاه ناشناس').toString();
+    final senderFingerprint = (info['fingerprint'] ?? '').toString();
     final files = (data['files'] as Map?)?.cast<String, dynamic>() ?? {};
 
     if (files.isEmpty) {
@@ -164,6 +167,7 @@ class TransferServer {
         : await onIncomingRequest!(
             IncomingRequest(
               senderAlias: senderAlias,
+              senderFingerprint: senderFingerprint,
               sourceIp: sourceIp,
               files: requestFiles,
             ),

@@ -11,6 +11,7 @@ import '../../core/storage_guard.dart';
 import '../../core/trusted_devices_store.dart';
 import '../../core/transfer_background_service.dart';
 import '../../core/transfer_notifications.dart';
+import '../../core/transfer_session_controller.dart';
 import '../../core/transfer_history_store.dart';
 import '../../network/discovery_service.dart';
 import '../../network/nearby_device.dart';
@@ -41,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   final _uuid = const Uuid();
   final _shareIntent = ShareIntentService();
   final _trustedDevices = TrustedDevicesStore();
+  final _transferSession = TransferSessionController();
 
   List<NearbyDevice> _devices = const [];
   bool _sending = false;
@@ -337,6 +339,10 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final files = await _transfer.buildFiles(paths);
+      _transferSession.start(
+        peer: device.alias,
+        files: files,
+      );
       await TransferBackgroundService.start(
         peer: device.alias,
         filesCount: files.length,
@@ -352,6 +358,7 @@ class _HomePageState extends State<HomePage> {
         pin: pin,
         onProgress: (id, value, fileTotal) {
           sent[id] = value;
+          _transferSession.updateProgress(id, value, fileTotal);
           final done = sent.values.fold<int>(0, (a, b) => a + b);
           String currentName = 'در حال انتقال';
           for (final file in files) {
@@ -369,6 +376,8 @@ class _HomePageState extends State<HomePage> {
             setState(() => _progress = total == 0 ? 0 : done / total);
           }
         },
+        onStatus: _transferSession.updateStatus,
+        control: _transferSession.runtimeControl,
       );
 
       for (final file in files) {
@@ -414,6 +423,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } finally {
+      _transferSession.finish();
       await TransferBackgroundService.stop();
       if (mounted) {
         setState(() {
@@ -441,8 +451,7 @@ class _HomePageState extends State<HomePage> {
           textDirection: TextDirection.rtl,
           child: SendPage(
             devices: _devices,
-            sending: _sending,
-            progress: _progress,
+            sessionController: _transferSession,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(
@@ -471,6 +480,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _shareIntent.dispose();
+    _transferSession.dispose();
     _discovery.dispose();
     _server.stop();
     super.dispose();

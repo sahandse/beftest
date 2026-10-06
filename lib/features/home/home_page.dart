@@ -18,6 +18,7 @@ import '../../network/nearby_device.dart';
 import '../../network/transfer_server.dart';
 import '../../network/transfer_service.dart';
 import '../receive/receive_page.dart';
+import '../history/history_page.dart';
 import '../send/send_page.dart';
 import '../send/apps_picker_page.dart';
 import '../settings/settings_page.dart';
@@ -390,6 +391,8 @@ class _HomePageState extends State<HomePage> {
             sent: true,
             success: true,
             createdAt: DateTime.now(),
+            sourcePath: file.file.path,
+            peerFingerprint: device.fingerprint,
           ),
         );
       }
@@ -432,6 +435,47 @@ class _HomePageState extends State<HomePage> {
         });
       }
     }
+  }
+
+  Future<void> _retryHistoryItem(HistoryItem item) async {
+    final path = item.sourcePath;
+    if (path == null || path.isEmpty || !await File(path).exists()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فایل اصلی دیگر پیدا نشد.')),
+      );
+      return;
+    }
+
+    NearbyDevice? device;
+    final fingerprint = item.peerFingerprint;
+    if (fingerprint != null && fingerprint.isNotEmpty) {
+      for (final candidate in _devices) {
+        if (candidate.fingerprint == fingerprint) {
+          device = candidate;
+          break;
+        }
+      }
+    }
+
+    device ??= _devices.cast<NearbyDevice?>().firstWhere(
+          (candidate) => candidate?.alias == item.peer,
+          orElse: () => null,
+        );
+
+    if (device == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.peer} الان نزدیک نیست.')),
+      );
+      return;
+    }
+
+    await _sendTo(
+      device,
+      SendCategory.files,
+      providedPaths: [path],
+    );
   }
 
   String _sizeText(int bytes) {
@@ -539,6 +583,23 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      tooltip: 'تاریخچه',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => Directionality(
+                              textDirection: TextDirection.rtl,
+                              child: HistoryPage(
+                                onRetry: _retryHistoryItem,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.history_rounded),
                     ),
                     IconButton.filledTonal(
                       tooltip: 'تنظیمات',

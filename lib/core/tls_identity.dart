@@ -25,7 +25,7 @@ class TlsIdentity {
   }
 
   SecurityContext createClientContext() {
-    final context = SecurityContext(withTrustedRoots: true);
+    final context = SecurityContext(withTrustedRoots: false);
     context.useCertificateChainBytes(utf8.encode(certificatePem));
     context.usePrivateKeyBytes(utf8.encode(privateKeyPem));
     return context;

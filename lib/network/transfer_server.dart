@@ -282,12 +282,15 @@ class TransferServer {
     }
 
     if (await target.exists()) {
-      final dot = safeName.lastIndexOf('.');
-      final stem = dot > 0 ? safeName.substring(0, dot) : safeName;
-      final ext = dot > 0 ? safeName.substring(dot) : '';
-      await temp.rename(
-        '${downloads.path}/$stem-${DateTime.now().millisecondsSinceEpoch}$ext',
+      final name = target.uri.pathSegments.last;
+      final dot = name.lastIndexOf('.');
+      final stem = dot > 0 ? name.substring(0, dot) : name;
+      final ext = dot > 0 ? name.substring(dot) : '';
+      final unique = File(
+        '${target.parent.path}${Platform.pathSeparator}'
+        '$stem-${DateTime.now().millisecondsSinceEpoch}$ext',
       );
+      await temp.rename(unique.path);
     } else {
       await temp.rename(target.path);
     }

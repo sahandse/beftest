@@ -7,6 +7,7 @@ class TransferFile {
   final int size;
   final String mimeType;
   final String sha256;
+  final String? relativePath;
 
   const TransferFile({
     required this.id,
@@ -15,6 +16,7 @@ class TransferFile {
     required this.size,
     required this.mimeType,
     required this.sha256,
+    this.relativePath,
   });
 }
 

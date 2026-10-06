@@ -114,7 +114,7 @@ class ReceivePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            _StatusTile(
+            const _StatusTile(
               icon: Icons.wifi_rounded,
               title: 'شبکه محلی',
               subtitle: 'بدون نیاز به اینترنت',

@@ -1,0 +1,26 @@
+name: befrest
+description: Persian local-first file transfer app compatible with LocalSend v2 concepts.
+publish_to: "none"
+version: 0.5.0+5
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: ^8.1.2
+  path_provider: ^2.1.4
+  permission_handler: ^11.3.1
+  crypto: ^3.0.3
+  mime: ^1.0.6
+  uuid: ^4.5.1
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

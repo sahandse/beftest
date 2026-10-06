@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../network/nearby_device.dart';
+import 'qr_scanner_page.dart';
 
 enum SendCategory {
   photos,
@@ -13,7 +14,7 @@ enum SendCategory {
   text,
 }
 
-class SendPage extends StatelessWidget {
+class SendPage extends StatefulWidget {
   final List<NearbyDevice> devices;
   final bool sending;
   final double progress;
@@ -30,6 +31,37 @@ class SendPage extends StatelessWidget {
     this.sharedPaths = const [],
     this.onSendShared,
   });
+
+  @override
+  State<SendPage> createState() => _SendPageState();
+}
+
+class _SendPageState extends State<SendPage> {
+  late List<NearbyDevice> _devices;
+
+  @override
+  void initState() {
+    super.initState();
+    _devices = widget.devices.toList();
+  }
+
+  Future<void> _scanQr() async {
+    final device = await Navigator.push<NearbyDevice>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const QrScannerPage(),
+      ),
+    );
+
+    if (device == null || !mounted) return;
+
+    setState(() {
+      _devices.removeWhere(
+        (item) => item.fingerprint == device.fingerprint,
+      );
+      _devices.insert(0, device);
+    });
+  }
 
   IconData _iconFor(SendCategory category) {
     switch (category) {
@@ -111,7 +143,7 @@ class SendPage extends StatelessWidget {
                 );
               },
             ),
-            if (sharedPaths.isNotEmpty) ...[
+            if (widget.sharedPaths.isNotEmpty) ...[
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -125,7 +157,7 @@ class SendPage extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '${sharedPaths.length} فایل از Share آماده ارسال است',
+                        '${widget.sharedPaths.length} فایل از Share آماده ارسال است',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -145,17 +177,28 @@ class SendPage extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (sending)
-                  Text('${(progress * 100).round()}٪'),
+                OutlinedButton.icon(
+                  onPressed: _scanQr,
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                  label: const Text('اسکن QR'),
+                ),
               ],
             ),
             const SizedBox(height: 10),
-            if (sending)
+            Row(
+              children: [
+                const Expanded(child: SizedBox.shrink()),
+                if (widget.sending)
+                  Text('${(widget.progress * 100).round()}٪'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (widget.sending)
               Padding(
                 padding: const EdgeInsets.only(bottom: 14),
-                child: LinearProgressIndicator(value: progress),
+                child: LinearProgressIndicator(value: widget.progress),
               ),
-            if (devices.isEmpty)
+            if (_devices.isEmpty)
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -179,20 +222,20 @@ class SendPage extends StatelessWidget {
                 ),
               )
             else
-              ...devices.map(
+              ..._devices.map(
                 (device) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _DeviceCard(
                     device: device,
-                    disabled: sending,
+                    disabled: widget.sending,
                     onSend: (category) {
-                      if (sharedPaths.isNotEmpty && onSendShared != null) {
-                        onSendShared!(device, sharedPaths);
+                      if (widget.sharedPaths.isNotEmpty && widget.onSendShared != null) {
+                        widget.onSendShared!(device, widget.sharedPaths);
                       } else {
-                        onSend(device, category);
+                        widget.onSend(device, category);
                       }
                     },
-                    hasSharedFiles: sharedPaths.isNotEmpty,
+                    hasSharedFiles: widget.sharedPaths.isNotEmpty,
                   ),
                 ),
               ),

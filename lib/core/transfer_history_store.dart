@@ -11,6 +11,8 @@ class HistoryItem {
   final bool sent;
   final bool success;
   final DateTime createdAt;
+  final String? sourcePath;
+  final String? peerFingerprint;
 
   const HistoryItem({
     required this.id,
@@ -20,6 +22,8 @@ class HistoryItem {
     required this.sent,
     required this.success,
     required this.createdAt,
+    this.sourcePath,
+    this.peerFingerprint,
   });
 
   Map<String, dynamic> toJson() => {
@@ -30,6 +34,8 @@ class HistoryItem {
         'sent': sent,
         'success': success,
         'createdAt': createdAt.toIso8601String(),
+        'sourcePath': sourcePath,
+        'peerFingerprint': peerFingerprint,
       };
 
   factory HistoryItem.fromJson(Map<String, dynamic> json) => HistoryItem(
@@ -40,6 +46,8 @@ class HistoryItem {
         sent: json['sent'] == true,
         success: json['success'] == true,
         createdAt: DateTime.tryParse('${json['createdAt']}') ?? DateTime.now(),
+        sourcePath: json['sourcePath']?.toString(),
+        peerFingerprint: json['peerFingerprint']?.toString(),
       );
 }
 

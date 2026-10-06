@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'nearby_device.dart';
+import '../core/tls_identity.dart';
 
 class DiscoveryService {
   static const String multicastAddress = '224.0.0.167';
@@ -17,6 +18,7 @@ class DiscoveryService {
   Future<void> start({
     required String alias,
     required String fingerprint,
+    required TlsIdentity identity,
   }) async {
     if (_socket != null) {
       _announce(alias: alias, fingerprint: fingerprint);
@@ -55,7 +57,7 @@ class DiscoveryService {
         _controller.add(_devices.values.toList(growable: false));
 
         if (data['announce'] == true) {
-          await _registerTo(remote, alias, fingerprint);
+          await _registerTo(remote, alias, fingerprint, identity);
           _sendMulticastResponse(alias: alias, fingerprint: fingerprint);
         }
       } catch (_) {}
@@ -90,7 +92,7 @@ class DiscoveryService {
       'deviceType': 'mobile',
       'fingerprint': fingerprint,
       'port': port,
-      'protocol': 'http',
+      'protocol': 'https',
       'download': false,
       'announce': announce,
       'app': 'befrest',
@@ -103,11 +105,17 @@ class DiscoveryService {
     NearbyDevice device,
     String alias,
     String fingerprint,
+    TlsIdentity identity,
   ) async {
-    final client = HttpClient();
+    final client = HttpClient(context: identity.createClientContext());
+    client.badCertificateCallback = (certificate, host, port) {
+      final actual =
+          TlsIdentityStore.fingerprintFromCertificate(certificate);
+      return actual == device.fingerprint.toUpperCase();
+    };
     try {
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/localsend/v2/register',
+        'https://${device.ip}:${device.port}/api/localsend/v2/register',
       );
       final req = await client.postUrl(uri).timeout(const Duration(seconds: 2));
       req.headers.contentType = ContentType.json;
@@ -118,7 +126,7 @@ class DiscoveryService {
         'deviceType': 'mobile',
         'fingerprint': fingerprint,
         'port': port,
-        'protocol': 'http',
+        'protocol': 'https',
         'download': false,
         'app': 'befrest',
         'features': const ['resume-v1', 'queue-v1'],

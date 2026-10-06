@@ -13,7 +13,10 @@ class TransferService {
   final _uuid = const Uuid();
   final Map<String, _ReusableSession> _sessions = {};
 
-  Future<List<TransferFile>> buildFiles(List<String> paths) async {
+  Future<List<TransferFile>> buildFiles(
+    List<String> paths, {
+    Map<String, String> relativePaths = const {},
+  }) async {
     final result = <TransferFile>[];
     for (final path in paths) {
       final file = File(path);
@@ -28,6 +31,7 @@ class TransferService {
           size: stat.size,
           mimeType: lookupMimeType(path) ?? 'application/octet-stream',
           sha256: hash.toString(),
+          relativePath: relativePaths[path],
         ),
       );
     }

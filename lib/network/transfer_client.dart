@@ -66,6 +66,7 @@ class TransferClient {
     required TransferFile file,
     required String token,
     required void Function(int sent, int total) onProgress,
+    TransferRuntimeControl? control,
   }) async {
     final client = HttpClient();
     try {
@@ -81,6 +82,10 @@ class TransferClient {
 
       var sent = 0;
       await for (final chunk in file.file.openRead()) {
+        if (control != null) {
+          await control.waitIfPaused();
+          control.throwIfCancelled();
+        }
         request.add(chunk);
         sent += chunk.length;
         onProgress(sent, file.size);
@@ -135,11 +140,16 @@ class TransferClient {
     required TransferFile file,
     required String token,
     required void Function(int sent, int total) onProgress,
+    TransferRuntimeControl? control,
     int maxAttempts = 5,
   }) async {
     Object? lastError;
 
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      if (control != null) {
+        await control.waitIfPaused();
+        control.throwIfCancelled();
+      }
       final client = HttpClient();
       try {
         final offset = await queryResumeOffset(
@@ -168,6 +178,10 @@ class TransferClient {
 
         var sent = offset;
         await for (final chunk in file.file.openRead(offset)) {
+          if (control != null) {
+            await control.waitIfPaused();
+            control.throwIfCancelled();
+          }
           request.add(chunk);
           sent += chunk.length;
           onProgress(sent, file.size);

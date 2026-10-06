@@ -4,12 +4,12 @@ publish_to: "none"
 version: 1.0.0+100
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  file_picker: ^11.0.3
+  file_picker: ^13.1.0
   path_provider: ^2.1.4
   permission_handler: ^11.3.1
   crypto: ^3.0.3

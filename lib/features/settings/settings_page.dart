@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_settings.dart';
 import '../../core/transfer_history_store.dart';
+import 'trusted_devices_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final AppSettings settings;
@@ -102,6 +103,22 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
             const SizedBox(height: 28),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('دستگاه‌های مورداعتماد'),
+              subtitle: const Text('مدیریت دستگاه‌هایی که بدون تأیید دریافت می‌شوند.'),
+              trailing: const Icon(Icons.chevron_left_rounded),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TrustedDevicesPage(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.delete_sweep_outlined),

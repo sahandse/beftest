@@ -196,6 +196,7 @@ class TransferServer {
         fileName: (meta['fileName'] ?? entry.key).toString(),
         size: int.tryParse('${meta['size']}') ?? 0,
         sha256: meta['sha256']?.toString(),
+        relativePath: meta['relativePath']?.toString(),
       );
     }
 
@@ -240,11 +241,9 @@ class TransferServer {
 
     final downloads = await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
-    final safeName = expected.fileName
-        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
-        .replaceAll('..', '_');
-    final target = File('${downloads.path}/$safeName');
+    final target = await _finalTarget(expected);
     final temp = File('${target.path}.befrest-part');
+    await temp.parent.create(recursive: true);
 
     final sink = temp.openWrite();
     var received = 0;
@@ -320,13 +319,40 @@ class TransferServer {
     return File('${downloads.path}/.befrest-$sessionId-$safeId.part');
   }
 
+
+  String? _safeRelativePath(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final normalized = value.replaceAll('\\', '/');
+    if (normalized.startsWith('/') || normalized.contains(':')) return null;
+
+    final parts = normalized
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (parts.isEmpty || parts.any((part) => part == '.' || part == '..')) {
+      return null;
+    }
+
+    return parts
+        .map(
+          (part) => part
+              .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+              .replaceAll('..', '_'),
+        )
+        .join(Platform.pathSeparator);
+  }
+
   Future<File> _finalTarget(_ExpectedFile expected) async {
     final downloads = await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
     final safeName = expected.fileName
         .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
         .replaceAll('..', '_');
-    final base = File('${downloads.path}/$safeName');
+    final relative = _safeRelativePath(expected.relativePath);
+    final base = relative == null
+        ? File('${downloads.path}/$safeName')
+        : File('${downloads.path}/$relative');
+    await base.parent.create(recursive: true);
     if (!await base.exists()) return base;
 
     final dot = safeName.lastIndexOf('.');
@@ -518,6 +544,7 @@ class TransferServer {
         fileName: (meta['fileName'] ?? entry.key).toString(),
         size: int.tryParse('${meta['size']}') ?? 0,
         sha256: meta['sha256']?.toString(),
+        relativePath: meta['relativePath']?.toString(),
       );
     }
 
@@ -574,6 +601,7 @@ class _ExpectedFile {
   final String fileName;
   final int size;
   final String? sha256;
+  final String? relativePath;
 
   _ExpectedFile({
     required this.id,
@@ -581,5 +609,6 @@ class _ExpectedFile {
     required this.fileName,
     required this.size,
     required this.sha256,
+    required this.relativePath,
   });
 }

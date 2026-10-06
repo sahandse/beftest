@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../core/tls_identity.dart';
+
 class IncomingRequestFile {
   final String id;
   final String fileName;
@@ -59,16 +61,19 @@ class TransferServer {
 
   Future<void> start({
     required String alias,
-    required String fingerprint,
+    required TlsIdentity identity,
     String? pin,
     int port = 53317,
   }) async {
     await stop();
     _pin = (pin ?? '').isEmpty ? null : pin;
 
-    _server = await HttpServer.bind(
+    final fingerprint = identity.fingerprint;
+    _server = await HttpServer.bindSecure(
       InternetAddress.anyIPv4,
       port,
+      identity.createServerContext(),
+      requestClientCertificate: false,
       shared: true,
     );
 
@@ -125,7 +130,7 @@ class TransferServer {
       'fingerprint': fingerprint,
       'download': false,
       'port': port,
-      'protocol': 'http',
+      'protocol': 'https',
     }));
     await request.response.close();
   }

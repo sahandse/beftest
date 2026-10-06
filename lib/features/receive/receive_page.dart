@@ -1,12 +1,10 @@
-import 'dart:io';
-
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/app_settings.dart';
-
 
 Future<String?> _localIpv4() async {
   final interfaces = await NetworkInterface.list(
@@ -24,7 +22,7 @@ Future<String?> _localIpv4() async {
   return null;
 }
 
-class ReceivePage extends StatelessWidget {
+class ReceivePage extends StatefulWidget {
   final AppSettings settings;
 
   const ReceivePage({
@@ -33,14 +31,25 @@ class ReceivePage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final qrPayload = Future<String>(() async {
+  State<ReceivePage> createState() => _ReceivePageState();
+}
+
+class _ReceivePageState extends State<ReceivePage> {
+  late Future<String> _qrPayload;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshQr();
+  }
+
+  void _refreshQr() {
+    _qrPayload = Future<String>(() async {
       final ip = await _localIpv4();
       return jsonEncode({
         'app': 'befrest',
-        'alias': settings.alias,
-        'fingerprint': settings.fingerprint,
+        'alias': widget.settings.alias,
+        'fingerprint': widget.settings.fingerprint,
         'ip': ip ?? '',
         'port': 53317,
         'protocol': 'http',
@@ -48,6 +57,34 @@ class ReceivePage extends StatelessWidget {
         'features': const ['resume-v1', 'queue-v1'],
       });
     });
+  }
+
+  Future<void> _toggleQuickReceive() async {
+    if (widget.settings.isQuickReceiveActive) {
+      await widget.settings.disableQuickReceive();
+    } else {
+      await widget.settings.enableQuickReceive();
+    }
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  String _quickReceiveSubtitle() {
+    final until = widget.settings.quickReceiveUntil;
+    if (!widget.settings.isQuickReceiveActive || until == null) {
+      return 'برای ۵ دقیقه درخواست‌های شبکه محلی را سریع بپذیر.';
+    }
+
+    final remaining = until.difference(DateTime.now());
+    final minutes = remaining.inMinutes.clamp(0, 5);
+    final seconds = remaining.inSeconds.remainder(60);
+    return 'فعال • حدود $minutes:${seconds.toString().padLeft(2, '0')} باقی مانده';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final quick = widget.settings.isQuickReceiveActive;
 
     return Scaffold(
       appBar: AppBar(
@@ -61,7 +98,9 @@ class ReceivePage extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(30),
-                color: cs.primaryContainer,
+                color: quick
+                    ? cs.secondaryContainer
+                    : cs.primaryContainer,
               ),
               child: Column(
                 children: [
@@ -72,31 +111,51 @@ class ReceivePage extends StatelessWidget {
                       shape: BoxShape.circle,
                       color: cs.surface,
                     ),
-                    child: const Icon(
-                      Icons.south_west_rounded,
+                    child: Icon(
+                      quick
+                          ? Icons.bolt_rounded
+                          : Icons.south_west_rounded,
                       size: 38,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
-                    'آماده دریافت',
-                    style: TextStyle(
+                  Text(
+                    quick ? 'دریافت سریع فعال' : 'آماده دریافت',
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    settings.alias,
+                    widget.settings.alias,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'دستگاه فرستنده باید روی همین شبکه محلی باشد.',
+                  Text(
+                    quick
+                        ? 'درخواست‌های شبکه محلی تا پایان زمان سریع پذیرفته می‌شوند.'
+                        : 'دستگاه فرستنده باید روی همین شبکه محلی باشد.',
                     textAlign: TextAlign.center,
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.tonalIcon(
+              onPressed: _toggleQuickReceive,
+              icon: Icon(
+                quick ? Icons.flash_off_rounded : Icons.bolt_rounded,
+              ),
+              label: Text(
+                quick ? 'خاموش‌کردن دریافت سریع' : 'دریافت سریع برای ۵ دقیقه',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _quickReceiveSubtitle(),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 18),
             Container(
@@ -123,7 +182,7 @@ class ReceivePage extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: FutureBuilder<String>(
-                        future: qrPayload,
+                        future: _qrPayload,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) {
                             return const SizedBox(
@@ -145,7 +204,7 @@ class ReceivePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'QR شامل اطلاعات اتصال محلی همین دستگاه است.',
+                    'در دستگاه فرستنده روی «اسکن QR» بزن.',
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -155,15 +214,15 @@ class ReceivePage extends StatelessWidget {
             const _StatusTile(
               icon: Icons.wifi_rounded,
               title: 'شبکه محلی',
-              subtitle: 'بدون نیاز به اینترنت',
+              subtitle: 'انتقال بدون نیاز به اینترنت',
             ),
             const SizedBox(height: 10),
             _StatusTile(
-              icon: settings.pinEnabled
+              icon: widget.settings.pinEnabled
                   ? Icons.lock_outline_rounded
                   : Icons.lock_open_rounded,
-              title: settings.pinEnabled ? 'PIN فعال' : 'PIN غیرفعال',
-              subtitle: settings.pinEnabled
+              title: widget.settings.pinEnabled ? 'PIN فعال' : 'PIN غیرفعال',
+              subtitle: widget.settings.pinEnabled
                   ? 'ارسال‌کننده باید PIN را وارد کند.'
                   : 'می‌توانی از تنظیمات PIN را فعال کنی.',
             ),

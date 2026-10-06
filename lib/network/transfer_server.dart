@@ -233,20 +233,15 @@ class TransferServer {
     final temp = File('${target.path}.befrest-part');
 
     final sink = temp.openWrite();
-    final digestSink = AccumulatorSink<Digest>();
-    final converter = sha256.startChunkedConversion(digestSink);
-
     var received = 0;
     await for (final chunk in request) {
       sink.add(chunk);
-      converter.add(chunk);
       received += chunk.length;
     }
     await sink.flush();
     await sink.close();
-    converter.close();
 
-    final hash = digestSink.events.single.toString();
+    final hash = (await sha256.bind(temp.openRead()).first).toString();
     var success = true;
 
     if (expected.size > 0 && received != expected.size) {

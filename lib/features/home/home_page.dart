@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage> {
   final _transferSession = TransferSessionController();
 
   List<NearbyDevice> _devices = const [];
+  Map<String, String> _pendingRelativePaths = const {};
 
   @override
   void initState() {
@@ -257,13 +258,31 @@ class _HomePageState extends State<HomePage> {
       final folder = await FilePicker.getDirectoryPath();
       if (folder == null) return const [];
       final dir = Directory(folder);
+      final rootName = dir.uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .last;
       final files = await dir
           .list(recursive: true, followLinks: false)
           .where((entity) => entity is File)
           .cast<File>()
-          .map((file) => file.path)
           .toList();
-      return files;
+
+      final rootPrefix = dir.path.endsWith(Platform.pathSeparator)
+          ? dir.path
+          : '${dir.path}${Platform.pathSeparator}';
+      final relative = <String, String>{};
+
+      for (final file in files) {
+        final path = file.path;
+        final child = path.startsWith(rootPrefix)
+            ? path.substring(rootPrefix.length)
+            : path.split(Platform.pathSeparator).last;
+        relative[path] =
+            [rootName, child].join(Platform.pathSeparator);
+      }
+
+      _pendingRelativePaths = relative;
+      return files.map((file) => file.path).toList(growable: false);
     }
 
     FileType type = FileType.any;
@@ -336,7 +355,11 @@ class _HomePageState extends State<HomePage> {
     if (paths.isEmpty) return;
 
     try {
-      final files = await _transfer.buildFiles(paths);
+      final files = await _transfer.buildFiles(
+        paths,
+        relativePaths: _pendingRelativePaths,
+      );
+      _pendingRelativePaths = const {};
       _transferSession.start(
         peer: device.alias,
         files: files,

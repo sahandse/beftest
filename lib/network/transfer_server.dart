@@ -298,6 +298,176 @@ class TransferServer {
     await request.response.close();
   }
 
+
+  Future<File> _resumeTempFile(
+    String sessionId,
+    _ExpectedFile expected,
+  ) async {
+    final downloads = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final safeId = expected.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    return File('${downloads.path}/.befrest-$sessionId-$safeId.part');
+  }
+
+  Future<File> _finalTarget(_ExpectedFile expected) async {
+    final downloads = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final safeName = expected.fileName
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll('..', '_');
+    final base = File('${downloads.path}/$safeName');
+    if (!await base.exists()) return base;
+
+    final dot = safeName.lastIndexOf('.');
+    final stem = dot > 0 ? safeName.substring(0, dot) : safeName;
+    final ext = dot > 0 ? safeName.substring(dot) : '';
+    return File(
+      '${downloads.path}/$stem-${DateTime.now().millisecondsSinceEpoch}$ext',
+    );
+  }
+
+  bool _authorizedResume(
+    HttpRequest request,
+    _Session? session,
+    _ExpectedFile? expected,
+    String? token,
+  ) {
+    final remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
+    return session != null &&
+        expected != null &&
+        token != null &&
+        expected.token == token &&
+        session.sourceIp == remoteIp;
+  }
+
+  Future<void> _handleResumeStatus(HttpRequest request) async {
+    final sessionId = request.uri.queryParameters['sessionId'];
+    final fileId = request.uri.queryParameters['fileId'];
+    final token = request.uri.queryParameters['token'];
+
+    if (sessionId == null || fileId == null) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final session = _sessions[sessionId];
+    final expected = session?.files[fileId];
+    if (!_authorizedResume(request, session, expected, token)) {
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+
+    final temp = await _resumeTempFile(sessionId, expected!);
+    final offset = await temp.exists() ? await temp.length() : 0;
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({'offset': offset}));
+    await request.response.close();
+  }
+
+  Future<void> _handleResumeUpload(HttpRequest request) async {
+    final sessionId = request.uri.queryParameters['sessionId'];
+    final fileId = request.uri.queryParameters['fileId'];
+    final token = request.uri.queryParameters['token'];
+    final requestedOffset =
+        int.tryParse(request.uri.queryParameters['offset'] ?? '');
+
+    if (sessionId == null || fileId == null || requestedOffset == null) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final session = _sessions[sessionId];
+    final expected = session?.files[fileId];
+    if (!_authorizedResume(request, session, expected, token)) {
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+
+    final temp = await _resumeTempFile(sessionId, expected!);
+    final actualOffset = await temp.exists() ? await temp.length() : 0;
+
+    if (requestedOffset != actualOffset) {
+      request.response.statusCode = HttpStatus.conflict;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({'offset': actualOffset}));
+      await request.response.close();
+      return;
+    }
+
+    final sink = temp.openWrite(
+      mode: requestedOffset == 0 ? FileMode.write : FileMode.append,
+    );
+
+    try {
+      await for (final chunk in request) {
+        sink.add(chunk);
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+
+    final received = await temp.length();
+
+    if (received < expected.size) {
+      request.response.statusCode = HttpStatus.permanentRedirect;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({'offset': received}));
+      await request.response.close();
+      return;
+    }
+
+    if (received > expected.size) {
+      await temp.delete();
+      request.response.statusCode = 422;
+      await request.response.close();
+      return;
+    }
+
+    final hash = (await sha256.bind(temp.openRead()).first).toString();
+    if (expected.sha256 != null &&
+        expected.sha256!.isNotEmpty &&
+        expected.sha256 != hash) {
+      await temp.delete();
+      onIncomingComplete?.call(
+        IncomingFileEvent(
+          senderAlias: session!.senderAlias,
+          fileName: expected.fileName,
+          size: received,
+          success: false,
+        ),
+      );
+      request.response.statusCode = 422;
+      await request.response.close();
+      return;
+    }
+
+    final target = await _finalTarget(expected);
+    await temp.rename(target.path);
+
+    session!.files.remove(fileId);
+    onIncomingComplete?.call(
+      IncomingFileEvent(
+        senderAlias: session.senderAlias,
+        fileName: expected.fileName,
+        size: received,
+        success: true,
+      ),
+    );
+
+    if (session.files.isEmpty) {
+      _sessions.remove(sessionId);
+    }
+
+    request.response.statusCode = HttpStatus.noContent;
+    await request.response.close();
+  }
+
   Future<void> _handleCancel(HttpRequest request) async {
     final sessionId = request.uri.queryParameters['sessionId'];
     if (sessionId != null) _sessions.remove(sessionId);

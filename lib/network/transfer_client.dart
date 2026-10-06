@@ -3,8 +3,24 @@ import 'dart:io';
 
 import 'nearby_device.dart';
 import 'transfer_models.dart';
+import '../core/tls_identity.dart';
 
 class TransferClient {
+  final TlsIdentity identity;
+
+  TransferClient({
+    required this.identity,
+  });
+
+  HttpClient _clientFor(NearbyDevice device) {
+    final client = HttpClient(context: identity.createClientContext());
+    client.badCertificateCallback = (certificate, host, port) {
+      final actual =
+          TlsIdentityStore.fingerprintFromCertificate(certificate);
+      return actual == device.fingerprint.toUpperCase();
+    };
+    return client;
+  }
   Future<Map<String, dynamic>> prepareUpload({
     required NearbyDevice device,
     required String alias,
@@ -12,11 +28,11 @@ class TransferClient {
     required List<TransferFile> files,
     String? pin,
   }) async {
-    final client = HttpClient();
+    final client = _clientFor(device);
     try {
       final query = pin == null || pin.isEmpty ? '' : '?pin=${Uri.encodeQueryComponent(pin)}';
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/localsend/v2/prepare-upload$query',
+        'https://${device.ip}:${device.port}/api/localsend/v2/prepare-upload$query',
       );
       final request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
@@ -70,10 +86,10 @@ class TransferClient {
     required void Function(int sent, int total) onProgress,
     TransferRuntimeControl? control,
   }) async {
-    final client = HttpClient();
+    final client = _clientFor(device);
     try {
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/localsend/v2/upload'
+        'https://${device.ip}:${device.port}/api/localsend/v2/upload'
         '?sessionId=${Uri.encodeQueryComponent(sessionId)}'
         '&fileId=${Uri.encodeQueryComponent(file.id)}'
         '&token=${Uri.encodeQueryComponent(token)}',
@@ -114,10 +130,10 @@ class TransferClient {
     required String sessionId,
     required List<TransferFile> files,
   }) async {
-    final client = HttpClient();
+    final client = _clientFor(device);
     try {
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/befrest/v1/session/add'
+        'https://${device.ip}:${device.port}/api/befrest/v1/session/add'
         '?sessionId=${Uri.encodeQueryComponent(sessionId)}',
       );
       final request = await client.postUrl(uri);
@@ -158,10 +174,10 @@ class TransferClient {
     required String fileId,
     required String token,
   }) async {
-    final client = HttpClient();
+    final client = _clientFor(device);
     try {
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/befrest/v1/resume/status'
+        'https://${device.ip}:${device.port}/api/befrest/v1/resume/status'
         '?sessionId=${Uri.encodeQueryComponent(sessionId)}'
         '&fileId=${Uri.encodeQueryComponent(fileId)}'
         '&token=${Uri.encodeQueryComponent(token)}',
@@ -196,7 +212,7 @@ class TransferClient {
         await control.waitIfPaused();
         control.throwIfCancelled();
       }
-      final client = HttpClient();
+      final client = _clientFor(device);
       try {
         final offset = await queryResumeOffset(
           device: device,
@@ -211,7 +227,7 @@ class TransferClient {
         }
 
         final uri = Uri.parse(
-          'http://${device.ip}:${device.port}/api/befrest/v1/resume/upload'
+          'https://${device.ip}:${device.port}/api/befrest/v1/resume/upload'
           '?sessionId=${Uri.encodeQueryComponent(sessionId)}'
           '&fileId=${Uri.encodeQueryComponent(file.id)}'
           '&token=${Uri.encodeQueryComponent(token)}'
@@ -278,10 +294,10 @@ class TransferClient {
     required String sessionId,
   }) async {
     if (sessionId.isEmpty) return;
-    final client = HttpClient();
+    final client = _clientFor(device);
     try {
       final uri = Uri.parse(
-        'http://${device.ip}:${device.port}/api/localsend/v2/cancel'
+        'https://${device.ip}:${device.port}/api/localsend/v2/cancel'
         '?sessionId=${Uri.encodeQueryComponent(sessionId)}',
       );
       final request = await client.postUrl(uri);

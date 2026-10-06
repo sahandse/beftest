@@ -244,8 +244,6 @@ class TransferServer {
       return;
     }
 
-    final downloads = await getDownloadsDirectory() ??
-        await getApplicationDocumentsDirectory();
     final target = await _finalTarget(expected);
     final temp = File('${target.path}.befrest-part');
     await temp.parent.create(recursive: true);

@@ -1,9 +1,28 @@
+import 'dart:io';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/app_settings.dart';
+
+
+Future<String?> _localIpv4() async {
+  final interfaces = await NetworkInterface.list(
+    type: InternetAddressType.IPv4,
+    includeLoopback: false,
+  );
+
+  for (final interface in interfaces) {
+    for (final address in interface.addresses) {
+      final ip = address.address;
+      if (ip.startsWith('169.254.')) continue;
+      return ip;
+    }
+  }
+  return null;
+}
 
 class ReceivePage extends StatelessWidget {
   final AppSettings settings;
@@ -16,13 +35,18 @@ class ReceivePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final qrPayload = jsonEncode({
-      'app': 'befrest',
-      'alias': settings.alias,
-      'fingerprint': settings.fingerprint,
-      'port': 53317,
-      'protocol': 'http',
-      'version': '2.2',
+    final qrPayload = Future<String>(() async {
+      final ip = await _localIpv4();
+      return jsonEncode({
+        'app': 'befrest',
+        'alias': settings.alias,
+        'fingerprint': settings.fingerprint,
+        'ip': ip ?? '',
+        'port': 53317,
+        'protocol': 'http',
+        'version': '2.2',
+        'features': const ['resume-v1', 'queue-v1'],
+      });
     });
 
     return Scaffold(
@@ -98,10 +122,24 @@ class ReceivePage extends StatelessWidget {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(14),
-                      child: QrImageView(
-                        data: qrPayload,
-                        size: 210,
-                        backgroundColor: Colors.white,
+                      child: FutureBuilder<String>(
+                        future: qrPayload,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const SizedBox(
+                              width: 210,
+                              height: 210,
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+                          return QrImageView(
+                            data: snapshot.data!,
+                            size: 210,
+                            backgroundColor: Colors.white,
+                          );
+                        },
                       ),
                     ),
                   ),

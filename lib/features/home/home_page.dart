@@ -39,7 +39,6 @@ class _HomePageState extends State<HomePage> {
   final _shareIntent = ShareIntentService();
 
   List<NearbyDevice> _devices = const [];
-  List<String> _sharedPaths = const [];
   bool _sending = false;
   double _progress = 0;
 
@@ -58,7 +57,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> _startShareIntent() async {
     await _shareIntent.start((paths) {
       if (!mounted) return;
-      setState(() => _sharedPaths = paths);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _openSend(sharedPaths: paths);
@@ -327,9 +325,6 @@ class _HomePageState extends State<HomePage> {
         peer: device.alias,
         filesCount: files.length,
       );
-      if (providedPaths != null && mounted) {
-        setState(() => _sharedPaths = const []);
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ارسال به ${device.alias} کامل شد')),

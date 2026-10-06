@@ -169,7 +169,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (category == SendCategory.folders) {
-      final folder = await FilePicker.platform.getDirectoryPath();
+      final folder = await FilePicker.getDirectoryPath();
       if (folder == null) return const [];
       final dir = Directory(folder);
       final files = await dir
@@ -202,7 +202,7 @@ class _HomePageState extends State<HomePage> {
         type = FileType.any;
     }
 
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       allowMultiple: true,
       type: type,
       allowedExtensions: extensions,

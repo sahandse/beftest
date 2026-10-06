@@ -7,9 +7,14 @@ import 'package:uuid/uuid.dart';
 import 'nearby_device.dart';
 import 'transfer_client.dart';
 import 'transfer_models.dart';
+import '../core/tls_identity.dart';
 
 class TransferService {
-  final TransferClient _client = TransferClient();
+  final TransferClient _client;
+
+  TransferService({
+    required TlsIdentity identity,
+  }) : _client = TransferClient(identity: identity);
   final _uuid = const Uuid();
   final Map<String, _ReusableSession> _sessions = {};
 

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -454,7 +453,7 @@ class _AssetTile extends StatelessWidget {
 
 class _PermissionError extends StatelessWidget {
   final String message;
-  final Future<bool> Function() onSettings;
+  final Future<void> Function() onSettings;
 
   const _PermissionError({
     required this.message,

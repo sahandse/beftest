@@ -8,6 +8,7 @@ class AppSettings {
   static const _fingerprintKey = 'fingerprint';
   static const _pinEnabledKey = 'pin_enabled';
   static const _pinKey = 'pin';
+  static const _quickReceiveUntilKey = 'quick_receive_until';
 
   final SharedPreferences prefs;
 
@@ -30,11 +31,31 @@ class AppSettings {
   bool get pinEnabled => prefs.getBool(_pinEnabledKey) ?? false;
   String get pin => prefs.getString(_pinKey) ?? '';
 
+  DateTime? get quickReceiveUntil {
+    final raw = prefs.getString(_quickReceiveUntilKey);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  bool get isQuickReceiveActive {
+    final until = quickReceiveUntil;
+    return until != null && until.isAfter(DateTime.now());
+  }
+
   Future<void> setAlias(String value) =>
       prefs.setString(_aliasKey, value.trim().isEmpty ? 'گوشی من' : value.trim());
 
   Future<void> setPinEnabled(bool value) =>
       prefs.setBool(_pinEnabledKey, value);
+
+  Future<void> enableQuickReceive({
+    Duration duration = const Duration(minutes: 5),
+  }) {
+    final until = DateTime.now().add(duration);
+    return prefs.setString(_quickReceiveUntilKey, until.toIso8601String());
+  }
+
+  Future<void> disableQuickReceive() =>
+      prefs.remove(_quickReceiveUntilKey);
 
   Future<void> setPin(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');

@@ -46,8 +46,6 @@ class _HomePageState extends State<HomePage> {
   final _transferSession = TransferSessionController();
 
   List<NearbyDevice> _devices = const [];
-  bool _sending = false;
-  double _progress = 0;
 
   @override
   void initState() {
@@ -333,11 +331,6 @@ class _HomePageState extends State<HomePage> {
     final paths = providedPaths ?? await _pickPaths(category);
     if (paths.isEmpty) return;
 
-    setState(() {
-      _sending = true;
-      _progress = 0;
-    });
-
     try {
       final files = await _transfer.buildFiles(paths);
       _transferSession.start(
@@ -373,9 +366,6 @@ class _HomePageState extends State<HomePage> {
             sent: value,
             total: fileTotal,
           );
-          if (mounted) {
-            setState(() => _progress = total == 0 ? 0 : done / total);
-          }
         },
         onStatus: _transferSession.updateStatus,
         control: _transferSession.runtimeControl,
@@ -409,7 +399,6 @@ class _HomePageState extends State<HomePage> {
       if (error.toString().contains('PIN_REQUIRED') && mounted) {
         final entered = await _askForPin();
         if (entered != null && entered.isNotEmpty) {
-          setState(() => _sending = false);
           await _sendTo(
             device,
             category,
@@ -428,12 +417,6 @@ class _HomePageState extends State<HomePage> {
     } finally {
       _transferSession.finish();
       await TransferBackgroundService.stop();
-      if (mounted) {
-        setState(() {
-          _sending = false;
-          _progress = 0;
-        });
-      }
     }
   }
 

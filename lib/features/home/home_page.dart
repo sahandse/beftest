@@ -21,6 +21,7 @@ import '../receive/receive_page.dart';
 import '../history/history_page.dart';
 import '../send/send_page.dart';
 import '../send/apps_picker_page.dart';
+import '../send/grouped_photos_picker_page.dart';
 import '../settings/settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -233,6 +234,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<List<String>> _pickPaths(SendCategory category) async {
+    if (category == SendCategory.photos) {
+      final paths = await Navigator.push<List<String>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const GroupedPhotosPickerPage(),
+        ),
+      );
+      return paths ?? const [];
+    }
+
     if (category == SendCategory.apps) {
       final path = await Navigator.push<String>(
         context,
@@ -289,7 +300,7 @@ class _HomePageState extends State<HomePage> {
     List<String>? extensions;
     switch (category) {
       case SendCategory.photos:
-        type = FileType.image;
+        type = FileType.any;
       case SendCategory.videos:
         type = FileType.video;
       case SendCategory.music:

@@ -82,6 +82,12 @@ class TransferServer {
         } else if (path == '/api/localsend/v2/upload' &&
             request.method == 'POST') {
           await _handleUpload(request);
+        } else if (path == '/api/befrest/v1/resume/status' &&
+            request.method == 'GET') {
+          await _handleResumeStatus(request);
+        } else if (path == '/api/befrest/v1/resume/upload' &&
+            request.method == 'POST') {
+          await _handleResumeUpload(request);
         } else if (path == '/api/localsend/v2/cancel' &&
             request.method == 'POST') {
           await _handleCancel(request);

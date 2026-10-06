@@ -41,6 +41,7 @@ class TransferService {
     String? pin,
     required void Function(String fileId, int sent, int total) onProgress,
     void Function(String fileId, TransferStatus status)? onStatus,
+    TransferRuntimeControl? control,
   }) async {
     final prepared = await _client.prepareUpload(
       device: device,
@@ -77,6 +78,7 @@ class TransferService {
               file: file,
               token: token,
               onProgress: (sent, total) => onProgress(file.id, sent, total),
+              control: control,
             );
           } else {
             await _client.uploadFile(
@@ -85,6 +87,7 @@ class TransferService {
               file: file,
               token: token,
               onProgress: (sent, total) => onProgress(file.id, sent, total),
+              control: control,
             );
           }
           onStatus?.call(file.id, TransferStatus.completed);

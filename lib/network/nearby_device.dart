@@ -6,6 +6,7 @@ class NearbyDevice {
   final int port;
   final DeviceType type;
   final String fingerprint;
+  final bool supportsResume;
 
   const NearbyDevice({
     required this.alias,
@@ -13,5 +14,6 @@ class NearbyDevice {
     required this.port,
     required this.type,
     required this.fingerprint,
+    this.supportsResume = false,
   });
 }

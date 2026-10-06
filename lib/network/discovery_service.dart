@@ -47,6 +47,9 @@ class DiscoveryService {
           port: int.tryParse('${data['port'] ?? port}') ?? port,
           type: _parseType((data['deviceType'] ?? '').toString()),
           fingerprint: remoteFingerprint,
+          supportsResume: ((data['features'] as List?) ?? const [])
+              .map((e) => e.toString())
+              .contains('resume-v1'),
         );
         _devices[remoteFingerprint] = remote;
         _controller.add(_devices.values.toList(growable: false));
@@ -90,6 +93,8 @@ class DiscoveryService {
       'protocol': 'http',
       'download': false,
       'announce': announce,
+      'app': 'befrest',
+      'features': const ['resume-v1', 'queue-v1'],
     }));
     _socket?.send(payload, InternetAddress(multicastAddress), port);
   }
@@ -115,6 +120,8 @@ class DiscoveryService {
         'port': port,
         'protocol': 'http',
         'download': false,
+        'app': 'befrest',
+        'features': const ['resume-v1', 'queue-v1'],
       }));
       final res = await req.close().timeout(const Duration(seconds: 2));
       await res.drain();

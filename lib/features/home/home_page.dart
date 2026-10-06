@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/app_settings.dart';
@@ -8,6 +11,8 @@ import '../../network/discovery_service.dart';
 import '../../network/nearby_device.dart';
 import '../../network/transfer_server.dart';
 import '../../network/transfer_service.dart';
+import '../receive/receive_page.dart';
+import '../send/send_page.dart';
 import '../settings/settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -30,8 +35,6 @@ class _HomePageState extends State<HomePage> {
   final _uuid = const Uuid();
 
   List<NearbyDevice> _devices = const [];
-  List<HistoryItem> _history = const [];
-  bool _discovering = true;
   bool _sending = false;
   double _progress = 0;
 
@@ -40,83 +43,71 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _discovery.devicesStream.listen((devices) {
       if (!mounted) return;
-      setState(() {
-        _devices = devices;
-        _discovering = false;
-      });
+      setState(() => _devices = devices);
     });
-    _loadHistory();
     _startNetwork();
   }
 
-  Future<void> _loadHistory() async {
-    final items = await _historyStore.load();
-    if (mounted) setState(() => _history = items);
-  }
-
   Future<void> _startNetwork() async {
-    try {
-      _server.onIncomingRequest = (incoming) async {
-        if (!mounted) return false;
-        final decision = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            icon: const Icon(Icons.move_to_inbox_rounded),
-            title: Text('دریافت از ${incoming.senderAlias}'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${incoming.files.length} فایل'),
-                const SizedBox(height: 6),
-                Text('حجم کل: ${_sizeText(incoming.totalSize)}'),
-                const SizedBox(height: 14),
-                ...incoming.files.take(3).map(
-                  (file) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      '• ${file.fileName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+    _server.onIncomingRequest = (incoming) async {
+      if (!mounted) return false;
+      final decision = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.move_to_inbox_rounded),
+          title: Text('دریافت از ${incoming.senderAlias}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${incoming.files.length} فایل'),
+              const SizedBox(height: 6),
+              Text('حجم کل: ${_sizeText(incoming.totalSize)}'),
+              const SizedBox(height: 14),
+              ...incoming.files.take(4).map(
+                    (file) => Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Text(
+                        '• ${file.fileName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
-                ),
-                if (incoming.files.length > 3)
-                  Text('و ${incoming.files.length - 3} فایل دیگر'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('رد'),
-              ),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(context, true),
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('دریافت'),
-              ),
             ],
           ),
-        );
-        return decision ?? false;
-      };
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('رد'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('دریافت'),
+            ),
+          ],
+        ),
+      );
+      return decision ?? false;
+    };
 
-      _server.onIncomingComplete = (event) async {
-        await _historyStore.add(
-          HistoryItem(
-            id: _uuid.v4(),
-            peer: event.senderAlias,
-            fileName: event.fileName,
-            size: event.size,
-            sent: false,
-            success: event.success,
-            createdAt: DateTime.now(),
-          ),
-        );
-        await _loadHistory();
-      };
+    _server.onIncomingComplete = (event) async {
+      await _historyStore.add(
+        HistoryItem(
+          id: _uuid.v4(),
+          peer: event.senderAlias,
+          fileName: event.fileName,
+          size: event.size,
+          sent: false,
+          success: event.success,
+          createdAt: DateTime.now(),
+        ),
+      );
+    };
 
+    try {
       await _server.start(
         alias: widget.settings.alias,
         fingerprint: widget.settings.fingerprint,
@@ -126,9 +117,7 @@ class _HomePageState extends State<HomePage> {
         alias: widget.settings.alias,
         fingerprint: widget.settings.fingerprint,
       );
-    } catch (_) {
-      if (mounted) setState(() => _discovering = false);
-    }
+    } catch (_) {}
   }
 
   Future<void> _restartNetwork() async {
@@ -136,28 +125,28 @@ class _HomePageState extends State<HomePage> {
     await _startNetwork();
   }
 
-  Future<String?> _askForPin() async {
+  Future<String?> _askText() async {
     final controller = TextEditingController();
     final value = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('PIN دستگاه'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('متن یا لینک'),
         content: TextField(
           controller: controller,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
           autofocus: true,
+          minLines: 3,
+          maxLines: 8,
           decoration: const InputDecoration(
-            hintText: 'کد را وارد کن',
+            hintText: 'متن یا لینک را وارد کن',
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('لغو'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('ادامه'),
           ),
         ],
@@ -167,12 +156,97 @@ class _HomePageState extends State<HomePage> {
     return value;
   }
 
-  Future<void> _sendTo(NearbyDevice device, {String? pin}) async {
-    final picked = await FilePicker.platform.pickFiles(
+  Future<List<String>> _pickPaths(SendCategory category) async {
+    if (category == SendCategory.text) {
+      final text = await _askText();
+      if (text == null || text.isEmpty) return const [];
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}/befrest-text-${DateTime.now().millisecondsSinceEpoch}.txt',
+      );
+      await file.writeAsString(text);
+      return [file.path];
+    }
+
+    if (category == SendCategory.folders) {
+      final folder = await FilePicker.platform.getDirectoryPath();
+      if (folder == null) return const [];
+      final dir = Directory(folder);
+      final files = await dir
+          .list(recursive: true, followLinks: false)
+          .where((entity) => entity is File)
+          .cast<File>()
+          .map((file) => file.path)
+          .toList();
+      return files;
+    }
+
+    FileType type = FileType.any;
+    List<String>? extensions;
+    switch (category) {
+      case SendCategory.photos:
+        type = FileType.image;
+      case SendCategory.videos:
+        type = FileType.video;
+      case SendCategory.music:
+        type = FileType.audio;
+      case SendCategory.documents:
+        type = FileType.custom;
+        extensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'];
+      case SendCategory.apps:
+        type = FileType.custom;
+        extensions = ['apk'];
+      case SendCategory.files:
+      case SendCategory.folders:
+      case SendCategory.text:
+        type = FileType.any;
+    }
+
+    final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
+      type: type,
+      allowedExtensions: extensions,
       withData: false,
     );
-    final paths = picked?.paths.whereType<String>().toList() ?? const <String>[];
+
+    return result?.paths.whereType<String>().toList() ?? const [];
+  }
+
+  Future<String?> _askForPin() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('PIN دستگاه'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'PIN را وارد کن'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('لغو'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('ادامه'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
+  }
+
+  Future<void> _sendTo(
+    NearbyDevice device,
+    SendCategory category, {
+    String? pin,
+  }) async {
+    final paths = await _pickPaths(category);
     if (paths.isEmpty) return;
 
     setState(() {
@@ -182,8 +256,8 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final files = await _transfer.buildFiles(paths);
-      final total = files.fold<int>(0, (sum, item) => sum + item.size);
-      final sentById = <String, int>{};
+      final total = files.fold<int>(0, (sum, file) => sum + file.size);
+      final sent = <String, int>{};
 
       await _transfer.send(
         device: device,
@@ -191,11 +265,11 @@ class _HomePageState extends State<HomePage> {
         fingerprint: widget.settings.fingerprint,
         files: files,
         pin: pin,
-        onProgress: (id, sent, fileTotal) {
-          sentById[id] = sent;
-          final sentAll = sentById.values.fold<int>(0, (a, b) => a + b);
+        onProgress: (id, value, _) {
+          sent[id] = value;
+          final done = sent.values.fold<int>(0, (a, b) => a + b);
           if (mounted) {
-            setState(() => _progress = total == 0 ? 0 : sentAll / total);
+            setState(() => _progress = total == 0 ? 0 : done / total);
           }
         },
       );
@@ -213,30 +287,25 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       }
-      await _loadHistory();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ارسال به ${device.alias} کامل شد')),
       );
-    } catch (e) {
-      final text = e.toString();
-      if (text.contains('PIN_REQUIRED') && mounted) {
-        setState(() {
-          _sending = false;
-          _progress = 0;
-        });
+    } catch (error) {
+      if (error.toString().contains('PIN_REQUIRED') && mounted) {
         final entered = await _askForPin();
         if (entered != null && entered.isNotEmpty) {
-          await _sendTo(device, pin: entered);
+          setState(() => _sending = false);
+          await _sendTo(device, category, pin: entered);
+          return;
         }
-        return;
       }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ارسال انجام نشد. اتصال یا PIN را بررسی کن.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('انتقال انجام نشد. دوباره تلاش کن.')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -256,6 +325,35 @@ class _HomePageState extends State<HomePage> {
     return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
+  void _openSend() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: SendPage(
+            devices: _devices,
+            sending: _sending,
+            progress: _progress,
+            onSend: _sendTo,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openReceive() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: ReceivePage(settings: widget.settings),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _discovery.dispose();
@@ -266,223 +364,181 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final size = MediaQuery.sizeOf(context);
+    final horizontal = size.width >= 720;
+
+    final receive = _ActionPane(
+      title: 'دریافت',
+      subtitle: 'گوشی را آماده دریافت کن',
+      icon: Icons.south_west_rounded,
+      background: cs.primaryContainer,
+      foreground: cs.onPrimaryContainer,
+      onTap: _openReceive,
+    );
+
+    final send = _ActionPane(
+      title: 'ارسال',
+      subtitle: _devices.isEmpty
+          ? 'فایل را مستقیم بفرست'
+          : '${_devices.length} دستگاه نزدیک',
+      icon: Icons.north_east_rounded,
+      background: cs.tertiaryContainer,
+      foreground: cs.onTertiaryContainer,
+      onTap: _openSend,
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('بفرست', style: TextStyle(fontWeight: FontWeight.w900)),
-        actions: [
-          IconButton(
-            tooltip: 'تنظیمات',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SettingsPage(
-                    settings: widget.settings,
-                    onNetworkRestart: _restartNetwork,
-                  ),
-                ),
-              );
-              await _loadHistory();
-              if (mounted) setState(() {});
-            },
-            icon: const Icon(Icons.tune_rounded),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _discovery.start(
-          alias: widget.settings.alias,
-          fingerprint: widget.settings.fingerprint,
-        ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: LinearGradient(
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                  colors: [cs.primaryContainer, cs.secondaryContainer],
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.near_me_rounded, size: 36),
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.settings.alias,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.settings.pinEnabled
-                        ? 'دریافت با PIN فعال است'
-                        : 'آماده ارسال و دریافت روی شبکه محلی',
-                    style: const TextStyle(height: 1.7),
-                  ),
-                  if (_sending) ...[
-                    const SizedBox(height: 18),
-                    LinearProgressIndicator(value: _progress),
-                    const SizedBox(height: 8),
-                    Text('${(_progress * 100).round()}٪ در حال ارسال'),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 28),
-            const Text(
-              'دستگاه‌های نزدیک',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            if (_discovering && _devices.isEmpty)
-              const _InfoCard(
-                icon: Icons.radar_rounded,
-                title: 'در حال جستجو',
-                subtitle: 'دستگاه‌های روی همین شبکه را پیدا می‌کنم.',
-              )
-            else if (_devices.isEmpty)
-              const _InfoCard(
-                icon: Icons.devices_other_rounded,
-                title: 'دستگاهی پیدا نشد',
-                subtitle: 'بفرست یا LocalSend را روی دستگاه دوم باز کن.',
-              )
-            else
-              ..._devices.map(
-                (device) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Material(
-                    color: cs.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(22),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(22),
-                      onTap: _sending ? null : () => _sendTo(device),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 25,
-                              child: Icon(
-                                device.type == DeviceType.desktop
-                                    ? Icons.laptop_rounded
-                                    : Icons.smartphone_rounded,
-                              ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 2, 8, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'بفرست',
+                            style: TextStyle(
+                              fontSize: 27,
+                              fontWeight: FontWeight.w900,
                             ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    device.alias,
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    device.ip,
-                                    textDirection: TextDirection.ltr,
-                                    style: Theme.of(context).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.send_rounded),
-                          ],
-                        ),
+                          ),
+                          Text(
+                            'بدون اینترنت • مستقیم • ساده',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                    IconButton.filledTonal(
+                      tooltip: 'تنظیمات',
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SettingsPage(
+                              settings: widget.settings,
+                              onNetworkRestart: _restartNetwork,
+                            ),
+                          ),
+                        );
+                        if (mounted) setState(() {});
+                      },
+                      icon: const Icon(Icons.tune_rounded),
+                    ),
+                  ],
                 ),
               ),
-            const SizedBox(height: 28),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'فعالیت اخیر',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                if (_history.isNotEmpty)
-                  Text('${_history.length} مورد'),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (_history.isEmpty)
-              const _InfoCard(
-                icon: Icons.history_rounded,
-                title: 'هنوز انتقالی ثبت نشده',
-                subtitle: 'ارسال‌ها و دریافت‌های واقعی اینجا می‌آیند.',
-              )
-            else
-              ..._history.take(12).map(
-                (item) => ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                  leading: CircleAvatar(
-                    child: Icon(item.sent
-                        ? Icons.north_east_rounded
-                        : Icons.south_west_rounded),
-                  ),
-                  title: Text(
-                    item.fileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text('${item.peer} • ${_sizeText(item.size)}'),
-                  trailing: Icon(
-                    item.success
-                        ? Icons.check_circle_outline_rounded
-                        : Icons.error_outline_rounded,
-                  ),
-                ),
+              Expanded(
+                child: horizontal
+                    ? Row(
+                        children: [
+                          Expanded(child: receive),
+                          const SizedBox(width: 12),
+                          Expanded(child: send),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Expanded(child: receive),
+                          const SizedBox(height: 12),
+                          Expanded(child: send),
+                        ],
+                      ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  final IconData icon;
+class _ActionPane extends StatelessWidget {
   final String title;
   final String subtitle;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
 
-  const _InfoCard({
-    required this.icon,
+  const _ActionPane({
     required this.title,
     required this.subtitle,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 30),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(height: 1.6)),
-              ],
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(34),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            Positioned(
+              left: -20,
+              bottom: -28,
+              child: Icon(
+                icon,
+                size: 180,
+                color: foreground.withValues(alpha: .07),
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      color: foreground.withValues(alpha: .1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: foreground, size: 30),
+                  ),
+                  const Spacer(),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 31,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: foreground.withValues(alpha: .78),
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Icon(
+                      Icons.arrow_back_rounded,
+                      color: foreground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

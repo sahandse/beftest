@@ -106,6 +106,48 @@ class TransferClient {
   }
 
 
+
+  Future<Map<String, dynamic>> addToSession({
+    required NearbyDevice device,
+    required String sessionId,
+    required List<TransferFile> files,
+  }) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(
+        'http://${device.ip}:${device.port}/api/befrest/v1/session/add'
+        '?sessionId=${Uri.encodeQueryComponent(sessionId)}',
+      );
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'files': {
+          for (final file in files)
+            file.id: {
+              'id': file.id,
+              'fileName': file.fileName,
+              'size': file.size,
+              'fileType': file.mimeType,
+              'sha256': file.sha256,
+            },
+        },
+      }));
+
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode == HttpStatus.notFound ||
+          response.statusCode == HttpStatus.forbidden) {
+        throw const HttpException('SESSION_EXPIRED');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('SESSION_ADD_${response.statusCode}');
+      }
+      return jsonDecode(body) as Map<String, dynamic>;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Future<int> queryResumeOffset({
     required NearbyDevice device,
     required String sessionId,

@@ -100,6 +100,119 @@ class TransferClient {
     }
   }
 
+
+  Future<int> queryResumeOffset({
+    required NearbyDevice device,
+    required String sessionId,
+    required String fileId,
+    required String token,
+  }) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(
+        'http://${device.ip}:${device.port}/api/befrest/v1/resume/status'
+        '?sessionId=${Uri.encodeQueryComponent(sessionId)}'
+        '&fileId=${Uri.encodeQueryComponent(fileId)}'
+        '&token=${Uri.encodeQueryComponent(token)}',
+      );
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode == HttpStatus.notFound) return 0;
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('RESUME_STATUS_${response.statusCode}');
+      }
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return int.tryParse('${data['offset'] ?? 0}') ?? 0;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> uploadFileResumable({
+    required NearbyDevice device,
+    required String sessionId,
+    required TransferFile file,
+    required String token,
+    required void Function(int sent, int total) onProgress,
+    int maxAttempts = 5,
+  }) async {
+    Object? lastError;
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final client = HttpClient();
+      try {
+        final offset = await queryResumeOffset(
+          device: device,
+          sessionId: sessionId,
+          fileId: file.id,
+          token: token,
+        );
+
+        if (offset >= file.size) {
+          onProgress(file.size, file.size);
+          return;
+        }
+
+        final uri = Uri.parse(
+          'http://${device.ip}:${device.port}/api/befrest/v1/resume/upload'
+          '?sessionId=${Uri.encodeQueryComponent(sessionId)}'
+          '&fileId=${Uri.encodeQueryComponent(file.id)}'
+          '&token=${Uri.encodeQueryComponent(token)}'
+          '&offset=$offset',
+        );
+
+        final request = await client.postUrl(uri);
+        request.headers.contentType = ContentType.binary;
+        request.contentLength = file.size - offset;
+
+        var sent = offset;
+        await for (final chunk in file.file.openRead(offset)) {
+          request.add(chunk);
+          sent += chunk.length;
+          onProgress(sent, file.size);
+        }
+
+        final response = await request.close();
+        final body = await utf8.decoder.bind(response).join();
+
+        if (response.statusCode == HttpStatus.noContent) {
+          onProgress(file.size, file.size);
+          return;
+        }
+
+        if (response.statusCode == HttpStatus.permanentRedirect) {
+          final data = body.isEmpty
+              ? <String, dynamic>{}
+              : jsonDecode(body) as Map<String, dynamic>;
+          final serverOffset = int.tryParse('${data['offset'] ?? sent}') ?? sent;
+          onProgress(serverOffset, file.size);
+          continue;
+        }
+
+        if (response.statusCode == HttpStatus.conflict) {
+          continue;
+        }
+
+        if (response.statusCode == 422) {
+          throw const HttpException('CHECKSUM_MISMATCH');
+        }
+
+        throw HttpException('RESUME_UPLOAD_${response.statusCode}');
+      } catch (error) {
+        lastError = error;
+        if (attempt + 1 >= maxAttempts) rethrow;
+        await Future<void>.delayed(
+          Duration(milliseconds: 600 * (attempt + 1)),
+        );
+      } finally {
+        client.close(force: true);
+      }
+    }
+
+    throw HttpException('RESUME_FAILED: $lastError');
+  }
+
   Future<void> cancel({
     required NearbyDevice device,
     required String sessionId,

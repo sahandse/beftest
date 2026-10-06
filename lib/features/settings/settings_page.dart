@@ -109,7 +109,7 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('فایل‌های دریافتی حذف نمی‌شوند.'),
               onTap: () async {
                 await TransferHistoryStore().clear();
-                if (!mounted) return;
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('تاریخچه پاک شد')),
                 );

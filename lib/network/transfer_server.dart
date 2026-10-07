@@ -683,6 +683,7 @@ class TransferServer {
       _appUpdateDownloads[token] = _PreparedAppUpdate(
         packageName: packageName,
         file: file,
+        sourceIp: request.connectionInfo?.remoteAddress.address ?? '',
         expiresAt: DateTime.now().add(const Duration(minutes: 3)),
       );
       tokens[packageName] = token;
@@ -713,8 +714,10 @@ class TransferServer {
     }
 
     final prepared = _appUpdateDownloads[token];
+    final remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
     if (prepared == null ||
         prepared.packageName != packageName ||
+        prepared.sourceIp != remoteIp ||
         DateTime.now().isAfter(prepared.expiresAt) ||
         !await prepared.file.exists()) {
       _appUpdateDownloads.remove(token);
@@ -808,11 +811,13 @@ class _ExpectedFile {
 class _PreparedAppUpdate {
   final String packageName;
   final File file;
+  final String sourceIp;
   final DateTime expiresAt;
 
   const _PreparedAppUpdate({
     required this.packageName,
     required this.file,
+    required this.sourceIp,
     required this.expiresAt,
   });
 }

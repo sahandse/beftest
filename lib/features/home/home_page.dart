@@ -397,7 +397,6 @@ class _HomePageState extends State<HomePage> {
     final result = await FilePicker.pickFiles(
       type: type,
       allowedExtensions: extensions,
-      allowMultiple: true,
     );
 
     return result

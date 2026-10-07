@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:mime/mime.dart';
 import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'nearby_device.dart';
 import 'transfer_client.dart';
 import 'transfer_models.dart';
 import '../core/tls_identity.dart';
+import '../core/app_inventory_service.dart';
 
 class TransferService {
   final TransferClient _client;
@@ -16,6 +18,7 @@ class TransferService {
     required TlsIdentity identity,
   }) : _client = TransferClient(identity: identity);
   final _uuid = const Uuid();
+  final AppInventoryService _appInventory = AppInventoryService();
   final Map<String, _ReusableSession> _sessions = {};
 
   Future<List<TransferFile>> buildFiles(
@@ -41,6 +44,80 @@ class TransferService {
       );
     }
     return result;
+  }
+
+
+  Future<List<PeerAppUpdate>> checkAppUpdates({
+    required NearbyDevice device,
+    required String alias,
+    required String fingerprint,
+  }) async {
+    final apps = await _appInventory.loadInstalledVersions();
+    return _client.compareAppUpdates(
+      device: device,
+      alias: alias,
+      fingerprint: fingerprint,
+      localApps: apps,
+    );
+  }
+
+  Future<List<File>> receiveAppUpdates({
+    required NearbyDevice device,
+    required String alias,
+    required String fingerprint,
+    required List<PeerAppUpdate> updates,
+    void Function(
+      PeerAppUpdate update,
+      int received,
+      int? total,
+    )? onProgress,
+  }) async {
+    if (updates.isEmpty) return const [];
+
+    final tokens = await _client.prepareAppUpdates(
+      device: device,
+      alias: alias,
+      fingerprint: fingerprint,
+      updates: updates,
+    );
+
+    final downloads = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final appDir = Directory(
+      '${downloads.path}${Platform.pathSeparator}Befrest Apps',
+    );
+    await appDir.create(recursive: true);
+
+    final receivedFiles = <File>[];
+    for (final update in updates) {
+      final token = tokens[update.packageName];
+      if (token == null || token.isEmpty) continue;
+
+      final safeName = update.name
+          .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+          .replaceAll('..', '_')
+          .trim();
+      final safeVersion = update.remoteVersion
+          .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final target = File(
+        '${appDir.path}${Platform.pathSeparator}'
+        '${safeName.isEmpty ? update.packageName : safeName}'
+        '${safeVersion.isEmpty ? '' : '-$safeVersion'}.apk',
+      );
+
+      await _client.downloadAppUpdate(
+        device: device,
+        packageName: update.packageName,
+        token: token,
+        target: target,
+        onProgress: (received, total) {
+          onProgress?.call(update, received, total);
+        },
+      );
+      receivedFiles.add(target);
+    }
+
+    return receivedFiles;
   }
 
   Future<void> send({

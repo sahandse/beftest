@@ -15,7 +15,9 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
   List<AppInfo> _apps = const [];
   bool _loading = true;
   String _query = '';
-  String? _exportingPackage;
+  final Set<String> _selectedPackages = <String>{};
+  bool _exporting = false;
+  int _exportedCount = 0;
 
   @override
   void initState() {
@@ -37,36 +39,64 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
     });
   }
 
-  Future<void> _select(AppInfo app) async {
-    if (_exportingPackage != null) return;
-    setState(() => _exportingPackage = app.packageName);
+  void _toggle(AppInfo app) {
+    if (_exporting) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (!_selectedPackages.add(app.packageName)) {
+        _selectedPackages.remove(app.packageName);
+      }
+    });
+  }
 
+  Future<void> _finish() async {
+    if (_selectedPackages.isEmpty || _exporting) return;
+
+    final selected = _apps
+        .where((app) => _selectedPackages.contains(app.packageName))
+        .toList(growable: false);
+
+    setState(() {
+      _exporting = true;
+      _exportedCount = 0;
+    });
+
+    final paths = <String>[];
     try {
-      final path = await _channel.invokeMethod<String>(
-        'exportApk',
-        {
-          'packageName': app.packageName,
-          'label': app.name,
-          'version': app.versionName,
-        },
-      );
+      for (final app in selected) {
+        final path = await _channel.invokeMethod<String>(
+          'exportApk',
+          {
+            'packageName': app.packageName,
+            'label': app.name,
+            'version': app.versionName,
+          },
+        );
+        if (path != null && path.isNotEmpty) {
+          paths.add(path);
+        }
+        if (mounted) {
+          setState(() => _exportedCount++);
+        }
+      }
 
       if (!mounted) return;
-      if (path == null || path.isEmpty) {
+      if (paths.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فایل APK این برنامه قابل خواندن نیست.')),
+          const SnackBar(
+            content: Text('APK برنامه‌های انتخاب‌شده قابل آماده‌سازی نبود.'),
+          ),
         );
         return;
       }
-
-      Navigator.pop(context, path);
+      Navigator.pop(context, paths);
     } on PlatformException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('آماده‌سازی APK انجام نشد.')),
+        const SnackBar(content: Text('آماده‌سازی بعضی برنامه‌ها انجام نشد.')),
       );
     } finally {
-      if (mounted) setState(() => _exportingPackage = null);
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -84,13 +114,43 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
             .toList(growable: false);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('برنامه‌ها')),
+      appBar: AppBar(
+        title: const Text('برنامه‌ها'),
+        actions: [
+          if (_selectedPackages.isNotEmpty && !_exporting)
+            TextButton(
+              onPressed: () => setState(_selectedPackages.clear),
+              child: const Text('پاک کردن'),
+            ),
+        ],
+      ),
+      bottomNavigationBar: _selectedPackages.isEmpty
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: FilledButton.icon(
+                onPressed: _exporting ? null : _finish,
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      )
+                    : const Icon(Icons.send_rounded),
+                label: Text(
+                  _exporting
+                      ? 'آماده‌سازی $_exportedCount از ${_selectedPackages.length}'
+                      : 'انتخاب ${_selectedPackages.length} برنامه',
+                ),
+              ),
+            ),
       body: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
               child: TextField(
+                enabled: !_exporting,
                 onChanged: (value) => setState(() => _query = value),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search_rounded),
@@ -115,19 +175,22 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                               const SizedBox(height: 6),
                           itemBuilder: (context, index) {
                             final app = visible[index];
-                            final exporting =
-                                _exportingPackage == app.packageName;
+                            final selected =
+                                _selectedPackages.contains(app.packageName);
                             final cs = Theme.of(context).colorScheme;
-                            return Material(
-                              color: cs.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(24),
-                              child: InkWell(
-                                onTap: exporting
-                                    ? null
-                                    : () {
-                                        HapticFeedback.selectionClick();
-                                        _select(app);
-                                      },
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? cs.primaryContainer
+                                    : cs.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(24),
+                                child: InkWell(
+                                onTap: _exporting ? null : () => _toggle(app),
                                 borderRadius: BorderRadius.circular(24),
                                 child: Padding(
                                   padding: const EdgeInsets.all(14),
@@ -163,33 +226,18 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                                         ),
                                       ),
                                       const SizedBox(width: 10),
-                                      if (exporting)
-                                        const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      else
-                                        Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color: cs.primaryContainer,
-                                            borderRadius:
-                                                BorderRadius.circular(15),
-                                          ),
-                                          child: const Icon(
-                                            Icons.north_east_rounded,
-                                            size: 20,
-                                          ),
-                                        ),
+                                      Icon(
+                                        selected
+                                            ? Icons.check_circle_rounded
+                                            : Icons.circle_outlined,
+                                        color: selected ? cs.primary : null,
+                                      ),
                                     ],
                                   ),
                                 ),
                               ),
-                            );
+                            ),
+                          );
                           },
                         ),
             ),

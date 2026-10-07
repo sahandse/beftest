@@ -188,24 +188,24 @@ jobs:
 
       - name: Rename release outputs
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk befrest-1.1.1+102-signed.apk
-          cp build/app/outputs/bundle/release/app-release.aab befrest-1.1.1+102-signed.aab
-          sha256sum befrest-1.1.1+102-signed.apk befrest-1.1.1+102-signed.aab > SHA256SUMS.txt
+          cp build/app/outputs/flutter-apk/app-release.apk befrest-1.2.0+103-signed.apk
+          cp build/app/outputs/bundle/release/app-release.aab befrest-1.2.0+103-signed.aab
+          sha256sum befrest-1.2.0+103-signed.apk befrest-1.2.0+103-signed.aab > SHA256SUMS.txt
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: befrest-1.1.1+102-signed-apk
-          path: befrest-1.1.1+102-signed.apk
+          name: befrest-1.2.0+103-signed-apk
+          path: befrest-1.2.0+103-signed.apk
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: befrest-1.1.1+102-signed-aab
-          path: befrest-1.1.1+102-signed.aab
+          name: befrest-1.2.0+103-signed-aab
+          path: befrest-1.2.0+103-signed.aab
 
       - name: Upload checksums
         uses: actions/upload-artifact@v4
         with:
-          name: befrest-1.1.1+102-checksums
+          name: befrest-1.2.0+103-checksums
           path: SHA256SUMS.txt

@@ -44,6 +44,7 @@ class SendPage extends StatefulWidget {
   final ReceiveAppUpdates? onReceiveAppUpdates;
   final PickSendCategory? onPickCategory;
   final VoidCallback? onOpenReceive;
+  final Future<void> Function()? onRefreshDevices;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -65,6 +66,7 @@ class SendPage extends StatefulWidget {
     this.onReceiveAppUpdates,
     this.onPickCategory,
     this.onOpenReceive,
+    this.onRefreshDevices,
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,
@@ -506,6 +508,7 @@ class _SendPageState extends State<SendPage> {
             onPickCategory: widget.onPickCategory,
             onSendShared: widget.onSendShared,
             onOpenReceive: widget.onOpenReceive,
+            onRefreshDevices: widget.onRefreshDevices,
           ),
         ),
       ),
@@ -716,7 +719,10 @@ class _SendPageState extends State<SendPage> {
                 ),
                 const SizedBox(height: 12),
                 if (_devices.isEmpty)
-                  const _DevicesEmptyState()
+                  _DevicesEmptyState(
+                    onRefresh: widget.onRefreshDevices,
+                    onScanQr: session.isActive ? null : _scanQr,
+                  )
                 else
                   Wrap(
                     spacing: 10,
@@ -1128,15 +1134,40 @@ class _DeviceBubble extends StatelessWidget {
   }
 }
 
-class _DevicesEmptyState extends StatelessWidget {
-  const _DevicesEmptyState();
+class _DevicesEmptyState extends StatefulWidget {
+  final Future<void> Function()? onRefresh;
+  final VoidCallback? onScanQr;
+
+  const _DevicesEmptyState({
+    this.onRefresh,
+    this.onScanQr,
+  });
+
+  @override
+  State<_DevicesEmptyState> createState() => _DevicesEmptyStateState();
+}
+
+class _DevicesEmptyStateState extends State<_DevicesEmptyState> {
+  bool _refreshing = false;
+
+  Future<void> _refresh() async {
+    final callback = widget.onRefresh;
+    if (callback == null || _refreshing) return;
+    HapticFeedback.selectionClick();
+    setState(() => _refreshing = true);
+    try {
+      await callback();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+      padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(30),
@@ -1147,21 +1178,21 @@ class _DevicesEmptyState extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Container(
-                width: 92,
-                height: 92,
+                width: 96,
+                height: 96,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: cs.primaryContainer.withValues(alpha: .45),
                 ),
               ),
               Container(
-                width: 60,
-                height: 60,
+                width: 62,
+                height: 62,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: cs.primaryContainer,
                 ),
-                child: const Icon(Icons.radar_rounded, size: 30),
+                child: const Icon(Icons.radar_rounded, size: 31),
               ),
             ],
           ),
@@ -1173,11 +1204,37 @@ class _DevicesEmptyState extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 7),
           Text(
-            'بفرست را روی دستگاه دوم باز کن و مطمئن شو هر دو روی یک شبکه هستند.',
+            'بفرست را روی گوشی دوم باز کن و هر دو گوشی را روی یک Wi‑Fi یا Hotspot مشترک بگذار.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _refreshing ? null : _refresh,
+                  icon: _refreshing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  label: Text(_refreshing ? 'در حال جستجو…' : 'جستجوی دوباره'),
+                ),
+              ),
+              if (widget.onScanQr != null) ...[
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  tooltip: 'اتصال با QR',
+                  onPressed: widget.onScanQr,
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -1515,6 +1572,7 @@ class _PhoneMigrationPage extends StatefulWidget {
     List<String> paths,
   )? onSendShared;
   final VoidCallback? onOpenReceive;
+  final Future<void> Function()? onRefreshDevices;
 
   const _PhoneMigrationPage({
     required this.devices,
@@ -1522,6 +1580,7 @@ class _PhoneMigrationPage extends StatefulWidget {
     required this.onPickCategory,
     required this.onSendShared,
     required this.onOpenReceive,
+    this.onRefreshDevices,
   });
 
   @override
@@ -1825,9 +1884,21 @@ class _PhoneMigrationPageState extends State<_PhoneMigrationPage> {
                       color: cs.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(24),
                     ),
-                    child: const Text(
-                      'هنوز گوشی جدید پیدا نشده. روی گوشی جدید بفرست را باز کن و حالت «گوشی جدید» را بزن.',
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      children: [
+                        const Text(
+                          'هنوز گوشی جدید پیدا نشده. روی گوشی جدید بفرست را باز کن و حالت «گوشی جدید» را بزن.',
+                          textAlign: TextAlign.center,
+                        ),
+                        if (widget.onRefreshDevices != null) ...[
+                          const SizedBox(height: 10),
+                          FilledButton.tonalIcon(
+                            onPressed: widget.onRefreshDevices,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('جستجوی دوباره'),
+                          ),
+                        ],
+                      ],
                     ),
                   )
                 else

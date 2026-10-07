@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/trusted_devices_store.dart';
 
@@ -30,24 +31,28 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
   }
 
   Future<void> _revoke(TrustedDevice device) async {
+    HapticFeedback.selectionClick();
     await _store.revoke(device.fingerprint);
     await _load();
   }
 
   Future<void> _clear() async {
+    HapticFeedback.mediumImpact();
     await _store.clear();
     await _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('دستگاه‌های مورداعتماد'),
         actions: [
           if (_devices.isNotEmpty)
             IconButton(
-              tooltip: 'پاک‌کردن همه',
+              tooltip: 'پاک کردن همه',
               onPressed: _clear,
               icon: const Icon(Icons.delete_sweep_outlined),
             ),
@@ -56,53 +61,93 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _devices.isEmpty
-              ? const Center(
+              ? Center(
                   child: Padding(
-                    padding: EdgeInsets.all(28),
+                    padding: const EdgeInsets.all(34),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.verified_user_outlined, size: 56),
-                        SizedBox(height: 14),
-                        Text(
+                        Container(
+                          width: 108,
+                          height: 108,
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            borderRadius: BorderRadius.circular(36),
+                          ),
+                          child: const Icon(
+                            Icons.verified_user_outlined,
+                            size: 48,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
                           'هنوز دستگاه مورداعتمادی نداری',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                        SizedBox(height: 8),
+                        const SizedBox(height: 8),
                         Text(
-                          'هنگام دریافت فایل می‌توانی «اعتماد و دریافت» را انتخاب کنی.',
+                          'هنگام دریافت فایل «اعتماد و دریافت» را بزن تا دستگاه اینجا ذخیره شود.',
                           textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
                     ),
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 30),
                   itemCount: _devices.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final device = _devices[index];
-                    return Card(
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.verified_user_outlined),
-                        ),
-                        title: Text(device.alias),
-                        subtitle: Text(
-                          device.fingerprint.length > 14
-                              ? '${device.fingerprint.substring(0, 14)}…'
-                              : device.fingerprint,
-                          textDirection: TextDirection.ltr,
-                        ),
-                        trailing: IconButton(
-                          tooltip: 'لغو اعتماد',
-                          onPressed: () => _revoke(device),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(Icons.verified_rounded),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  device.alias,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  device.fingerprint.length > 14
+                                      ? '${device.fingerprint.substring(0, 14)}…'
+                                      : device.fingerprint,
+                                  textDirection: TextDirection.ltr,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton.filledTonal(
+                            tooltip: 'لغو اعتماد',
+                            onPressed: () => _revoke(device),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
                       ),
                     );
                   },

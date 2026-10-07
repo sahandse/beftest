@@ -156,6 +156,8 @@ class TransferServer {
       'download': false,
       'port': port,
       'protocol': 'https',
+      'app': 'befrest',
+      'features': const ['resume-v1', 'queue-v1', 'app-updates-v1'],
     }));
     await request.response.close();
   }

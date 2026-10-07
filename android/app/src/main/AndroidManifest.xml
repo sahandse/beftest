@@ -28,7 +28,8 @@
     <application
         android:label="بفرست"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/befrest_launcher"
+        android:roundIcon="@drawable/befrest_launcher"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"

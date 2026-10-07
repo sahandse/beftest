@@ -316,14 +316,19 @@ class _HomePageState extends State<HomePage> {
       return images.map((image) => image.path).toList(growable: false);
     }
 
+    if (category == SendCategory.videos) {
+      final videos = await ImagePicker().pickMultiVideo();
+      return videos.map((video) => video.path).toList(growable: false);
+    }
+
     if (category == SendCategory.apps) {
-      final path = await Navigator.push<String>(
+      final paths = await Navigator.push<List<String>>(
         context,
         MaterialPageRoute(
           builder: (_) => const AppsPickerPage(),
         ),
       );
-      return path == null || path.isEmpty ? const [] : [path];
+      return paths ?? const [];
     }
 
     if (category == SendCategory.text) {
@@ -392,6 +397,7 @@ class _HomePageState extends State<HomePage> {
     final result = await FilePicker.pickFiles(
       type: type,
       allowedExtensions: extensions,
+      allowMultiple: true,
     );
 
     return result

@@ -73,7 +73,6 @@ class AppInventoryService {
       excludeSystemApps: true,
       excludeNonLaunchableApps: true,
       withIcon: false,
-      detectPlatformType: false,
     );
 
     return apps

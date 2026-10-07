@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/tls_identity.dart';
+import '../core/app_inventory_service.dart';
 
 class IncomingRequestFile {
   final String id;
@@ -37,6 +38,18 @@ class IncomingRequest {
   int get totalSize => files.fold(0, (sum, file) => sum + file.size);
 }
 
+class AppUpdateRequest {
+  final String senderAlias;
+  final String senderFingerprint;
+  final List<String> packageNames;
+
+  const AppUpdateRequest({
+    required this.senderAlias,
+    required this.senderFingerprint,
+    required this.packageNames,
+  });
+}
+
 class IncomingFileEvent {
   final String senderAlias;
   final String fileName;
@@ -54,9 +67,12 @@ class IncomingFileEvent {
 class TransferServer {
   HttpServer? _server;
   final Map<String, _Session> _sessions = {};
+  final Map<String, _PreparedAppUpdate> _appUpdateDownloads = {};
+  final AppInventoryService _appInventory = AppInventoryService();
   String? _pin;
 
   Future<bool> Function(IncomingRequest request)? onIncomingRequest;
+  Future<bool> Function(AppUpdateRequest request)? onAppUpdateRequest;
   void Function(IncomingFileEvent event)? onIncomingComplete;
 
   Future<void> start({
@@ -101,6 +117,15 @@ class TransferServer {
         } else if (path == '/api/localsend/v2/cancel' &&
             request.method == 'POST') {
           await _handleCancel(request);
+        } else if (path == '/api/befrest/v1/apps/compare' &&
+            request.method == 'POST') {
+          await _handleAppCompare(request);
+        } else if (path == '/api/befrest/v1/apps/prepare' &&
+            request.method == 'POST') {
+          await _handleAppPrepare(request);
+        } else if (path == '/api/befrest/v1/apps/download' &&
+            request.method == 'GET') {
+          await _handleAppDownload(request);
         } else {
           request.response.statusCode = HttpStatus.notFound;
           await request.response.close();
@@ -563,6 +588,156 @@ class TransferServer {
     await request.response.close();
   }
 
+
+  Future<void> _handleAppCompare(HttpRequest request) async {
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    final remoteApps = <String, InstalledAppVersion>{};
+
+    for (final item in (data['apps'] as List?) ?? const []) {
+      if (item is! Map) continue;
+      final app = InstalledAppVersion.fromJson(
+        item.cast<String, dynamic>(),
+      );
+      if (app.packageName.isEmpty) continue;
+      remoteApps[app.packageName] = app;
+    }
+
+    final localApps = await _appInventory.loadInstalledVersions();
+    final updates = <Map<String, dynamic>>[];
+
+    for (final local in localApps) {
+      final remote = remoteApps[local.packageName];
+      if (remote == null) continue;
+      if (local.versionCode <= remote.versionCode) continue;
+
+      updates.add({
+        'packageName': local.packageName,
+        'name': local.name,
+        'currentVersion': remote.versionName,
+        'currentVersionCode': remote.versionCode,
+        'remoteVersion': local.versionName,
+        'remoteVersionCode': local.versionCode,
+      });
+    }
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({'updates': updates}));
+    await request.response.close();
+  }
+
+  Future<void> _handleAppPrepare(HttpRequest request) async {
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    final info = (data['info'] as Map?)?.cast<String, dynamic>() ?? {};
+    final senderAlias = (info['alias'] ?? 'دستگاه ناشناس').toString();
+    final senderFingerprint = (info['fingerprint'] ?? '').toString();
+    final packages = ((data['packages'] as List?) ?? const [])
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .take(30)
+        .toList(growable: false);
+
+    if (packages.isEmpty) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final approved = onAppUpdateRequest == null
+        ? false
+        : await onAppUpdateRequest!(
+            AppUpdateRequest(
+              senderAlias: senderAlias,
+              senderFingerprint: senderFingerprint,
+              packageNames: packages,
+            ),
+          );
+
+    if (!approved) {
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+
+    final localApps = await _appInventory.loadInstalledVersions();
+    final byPackage = {
+      for (final app in localApps) app.packageName: app,
+    };
+
+    final tokens = <String, String>{};
+    for (final packageName in packages) {
+      final app = byPackage[packageName];
+      if (app == null) continue;
+
+      final path = await _appInventory.exportApk(app);
+      if (path == null || path.isEmpty) continue;
+
+      final file = File(path);
+      if (!await file.exists()) continue;
+
+      final token = _randomToken(40);
+      _appUpdateDownloads[token] = _PreparedAppUpdate(
+        packageName: packageName,
+        file: file,
+        expiresAt: DateTime.now().add(const Duration(minutes: 3)),
+      );
+      tokens[packageName] = token;
+    }
+
+    if (tokens.isEmpty) {
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+      return;
+    }
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({
+      'tokens': tokens,
+      'expiresInSeconds': 180,
+    }));
+    await request.response.close();
+  }
+
+  Future<void> _handleAppDownload(HttpRequest request) async {
+    final packageName = request.uri.queryParameters['package'];
+    final token = request.uri.queryParameters['token'];
+
+    if (packageName == null || token == null) {
+      request.response.statusCode = HttpStatus.badRequest;
+      await request.response.close();
+      return;
+    }
+
+    final prepared = _appUpdateDownloads[token];
+    if (prepared == null ||
+        prepared.packageName != packageName ||
+        DateTime.now().isAfter(prepared.expiresAt) ||
+        !await prepared.file.exists()) {
+      _appUpdateDownloads.remove(token);
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+
+    request.response.headers.contentType =
+        ContentType('application', 'vnd.android.package-archive');
+    request.response.contentLength = await prepared.file.length();
+
+    try {
+      await request.response.addStream(prepared.file.openRead());
+      await request.response.close();
+    } finally {
+      _appUpdateDownloads.remove(token);
+      try {
+        if (await prepared.file.exists()) {
+          await prepared.file.delete();
+        }
+      } catch (_) {}
+    }
+  }
+
   Future<void> _handleCancel(HttpRequest request) async {
     final sessionId = request.uri.queryParameters['sessionId'];
     if (sessionId != null) _sessions.remove(sessionId);
@@ -584,6 +759,14 @@ class TransferServer {
     await _server?.close(force: true);
     _server = null;
     _sessions.clear();
+    for (final prepared in _appUpdateDownloads.values) {
+      try {
+        if (await prepared.file.exists()) {
+          await prepared.file.delete();
+        }
+      } catch (_) {}
+    }
+    _appUpdateDownloads.clear();
   }
 }
 
@@ -616,5 +799,18 @@ class _ExpectedFile {
     required this.size,
     required this.sha256,
     required this.relativePath,
+  });
+}
+
+
+class _PreparedAppUpdate {
+  final String packageName;
+  final File file;
+  final DateTime expiresAt;
+
+  const _PreparedAppUpdate({
+    required this.packageName,
+    required this.file,
+    required this.expiresAt,
   });
 }

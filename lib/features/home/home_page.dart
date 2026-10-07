@@ -21,6 +21,7 @@ import '../../core/transfer_history_store.dart';
 import '../../network/discovery_service.dart';
 import '../../network/nearby_device.dart';
 import '../../network/transfer_server.dart';
+import '../../network/transfer_models.dart';
 import '../../network/transfer_service.dart';
 import '../receive/receive_page.dart';
 import '../history/history_page.dart';
@@ -794,11 +795,17 @@ class _HomePageState extends State<HomePage> {
             devices: _devices,
             devicesStream: _discovery.devicesStream,
             onPickCategory: _pickPaths,
-            onSend: (device, paths) => _sendTo(
-              device,
-              SendCategory.files,
-              providedPaths: paths,
-            ),
+            onSend: (device, paths) async {
+              await _sendTo(
+                device,
+                SendCategory.files,
+                providedPaths: paths,
+              );
+              return _transferSession.items.isNotEmpty &&
+                  _transferSession.items.every(
+                    (item) => item.status == TransferStatus.completed,
+                  );
+            },
             onRefreshDevices: _restartNetwork,
             onOpenReceive: _openReceive,
           ),

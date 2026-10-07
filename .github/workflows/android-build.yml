@@ -29,6 +29,9 @@ jobs:
       - name: Ensure Android scaffold
         run: flutter create . --platforms=android --org=ir.befrest --project-name=befrest
 
+      - name: Install Android SDK 37
+        run: yes | sdkmanager "platforms;android-37" >/dev/null
+
       - name: Align Android SDK
         run: |
           python3 - <<'PY'

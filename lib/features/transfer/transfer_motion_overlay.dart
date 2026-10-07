@@ -150,7 +150,7 @@ class _TransferPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final left = 58.0;
+    const left = 58.0;
     final right = size.width - 58;
     final centerY = size.height / 2;
 

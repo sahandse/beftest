@@ -89,7 +89,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
               child: TextField(
                 onChanged: (value) => setState(() => _query = value),
                 decoration: InputDecoration(
@@ -117,30 +117,77 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                             final app = visible[index];
                             final exporting =
                                 _exportingPackage == app.packageName;
-                            return Card(
-                              child: ListTile(
-                                onTap: exporting ? null : () => _select(app),
-                                leading: _AppIcon(bytes: app.icon),
-                                title: Text(
-                                  app.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  '${app.versionName} • ${app.packageName}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textDirection: TextDirection.ltr,
-                                ),
-                                trailing: exporting
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
+                            final cs = Theme.of(context).colorScheme;
+                            return Material(
+                              color: cs.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(24),
+                              child: InkWell(
+                                onTap: exporting
+                                    ? null
+                                    : () {
+                                        HapticFeedback.selectionClick();
+                                        _select(app);
+                                      },
+                                borderRadius: BorderRadius.circular(24),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Row(
+                                    children: [
+                                      _AppIcon(bytes: app.icon),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              app.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${app.versionName} • ${app.packageName}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textDirection:
+                                                  TextDirection.ltr,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall,
+                                            ),
+                                          ],
                                         ),
-                                      )
-                                    : const Icon(Icons.send_outlined),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      if (exporting)
+                                        const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      else
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: cs.primaryContainer,
+                                            borderRadius:
+                                                BorderRadius.circular(15),
+                                          ),
+                                          child: const Icon(
+                                            Icons.north_east_rounded,
+                                            size: 20,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             );
                           },

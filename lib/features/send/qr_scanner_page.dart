@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../network/nearby_device.dart';
 
@@ -14,6 +15,29 @@ class QrScannerPage extends StatefulWidget {
 
 class _QrScannerPageState extends State<QrScannerPage> {
   bool _handled = false;
+  bool _checkingPermission = true;
+  bool _cameraGranted = false;
+  bool _permanentlyDenied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestCameraForScanner();
+  }
+
+  Future<void> _requestCameraForScanner() async {
+    if (!mounted) return;
+    setState(() => _checkingPermission = true);
+
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+
+    setState(() {
+      _checkingPermission = false;
+      _cameraGranted = status.isGranted;
+      _permanentlyDenied = status.isPermanentlyDenied;
+    });
+  }
 
   void _onDetect(BarcodeCapture capture) {
     if (_handled || capture.barcodes.isEmpty) return;
@@ -75,42 +99,113 @@ class _QrScannerPageState extends State<QrScannerPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          MobileScanner(
-            onDetect: _onDetect,
-          ),
-          IgnorePointer(
-            child: Center(
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 3,
-                  ),
-                  borderRadius: BorderRadius.circular(30),
+      body: _checkingPermission
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            )
+          : !_cameraGranted
+              ? _CameraPermissionState(
+                  permanentlyDenied: _permanentlyDenied,
+                  onRetry: _requestCameraForScanner,
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    MobileScanner(
+                      onDetect: _onDetect,
+                    ),
+                    IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          width: 250,
+                          height: 250,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 3,
+                            ),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: 42,
+                      child: Text(
+                        'QR دستگاه مقصد را داخل کادر بگیر',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+    );
+  }
+}
+
+
+class _CameraPermissionState extends StatelessWidget {
+  final bool permanentlyDenied;
+  final Future<void> Function() onRetry;
+
+  const _CameraPermissionState({
+    required this.permanentlyDenied,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.qr_code_scanner_rounded,
+              color: Colors.white,
+              size: 58,
             ),
-          ),
-          const Positioned(
-            left: 24,
-            right: 24,
-            bottom: 42,
-            child: Text(
-              'QR دستگاه مقصد را داخل کادر بگیر',
+            const SizedBox(height: 16),
+            const Text(
+              'برای اسکن QR به دوربین نیاز است',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              permanentlyDenied
+                  ? 'دسترسی دوربین خاموش شده؛ از تنظیمات برنامه آن را فعال کن.'
+                  : 'فقط هنگام اسکن QR از دوربین استفاده می‌شود.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: permanentlyDenied
+                  ? () async => openAppSettings()
+                  : onRetry,
+              icon: Icon(
+                permanentlyDenied
+                    ? Icons.settings_rounded
+                    : Icons.camera_alt_rounded,
+              ),
+              label: Text(
+                permanentlyDenied ? 'باز کردن تنظیمات' : 'اجازه دوربین',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

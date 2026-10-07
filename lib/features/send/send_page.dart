@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -34,6 +36,7 @@ enum SendCategory {
 
 class SendPage extends StatefulWidget {
   final List<NearbyDevice> devices;
+  final Stream<List<NearbyDevice>>? devicesStream;
   final TransferSessionController sessionController;
   final Set<String> trustedFingerprints;
   final VoidCallback? onOpenHistory;
@@ -54,6 +57,7 @@ class SendPage extends StatefulWidget {
   const SendPage({
     super.key,
     required this.devices,
+    this.devicesStream,
     required this.sessionController,
     this.trustedFingerprints = const <String>{},
     this.onOpenHistory,
@@ -72,6 +76,7 @@ class SendPage extends StatefulWidget {
 
 class _SendPageState extends State<SendPage> {
   late List<NearbyDevice> _devices;
+  StreamSubscription<List<NearbyDevice>>? _devicesSubscription;
   SendCategory? _selectedCategory;
   List<String> _selectedPaths = const [];
   bool _pickingCategory = false;
@@ -85,6 +90,12 @@ class _SendPageState extends State<SendPage> {
   void initState() {
     super.initState();
     _devices = widget.devices.toList();
+    _devicesSubscription = widget.devicesStream?.listen((devices) {
+      if (!mounted) return;
+      setState(() {
+        _devices = devices.toList(growable: false);
+      });
+    });
     if (widget.sharedPaths.isNotEmpty) {
       _selectedCategory = SendCategory.files;
     }
@@ -97,6 +108,12 @@ class _SendPageState extends State<SendPage> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _devicesSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkUpdates(
@@ -485,6 +502,7 @@ class _SendPageState extends State<SendPage> {
           textDirection: TextDirection.rtl,
           child: _PhoneMigrationPage(
             devices: _devices,
+            devicesStream: widget.devicesStream,
             onPickCategory: widget.onPickCategory,
             onSendShared: widget.onSendShared,
             onOpenReceive: widget.onOpenReceive,
@@ -1490,6 +1508,7 @@ class _PhoneMigrationCard extends StatelessWidget {
 
 class _PhoneMigrationPage extends StatefulWidget {
   final List<NearbyDevice> devices;
+  final Stream<List<NearbyDevice>>? devicesStream;
   final PickSendCategory? onPickCategory;
   final Future<void> Function(
     NearbyDevice device,
@@ -1499,6 +1518,7 @@ class _PhoneMigrationPage extends StatefulWidget {
 
   const _PhoneMigrationPage({
     required this.devices,
+    this.devicesStream,
     required this.onPickCategory,
     required this.onSendShared,
     required this.onOpenReceive,
@@ -1509,6 +1529,8 @@ class _PhoneMigrationPage extends StatefulWidget {
 }
 
 class _PhoneMigrationPageState extends State<_PhoneMigrationPage> {
+  late List<NearbyDevice> _liveDevices;
+  StreamSubscription<List<NearbyDevice>>? _devicesSubscription;
   bool _oldPhone = true;
   bool _preparing = false;
   bool _sending = false;
@@ -1522,6 +1544,24 @@ class _PhoneMigrationPageState extends State<_PhoneMigrationPage> {
     SendCategory.folders,
   };
   List<String> _preparedPaths = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _liveDevices = widget.devices.toList(growable: false);
+    _devicesSubscription = widget.devicesStream?.listen((devices) {
+      if (!mounted) return;
+      setState(() {
+        _liveDevices = devices.toList(growable: false);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _devicesSubscription?.cancel();
+    super.dispose();
+  }
 
   List<SendCategory> get _transferable => const [
         SendCategory.photos,
@@ -1778,7 +1818,7 @@ class _PhoneMigrationPageState extends State<_PhoneMigrationPage> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (widget.devices.isEmpty)
+                if (_liveDevices.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -1791,7 +1831,7 @@ class _PhoneMigrationPageState extends State<_PhoneMigrationPage> {
                     ),
                   )
                 else
-                  ...widget.devices.map(
+                  ..._liveDevices.map(
                     (device) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: FilledButton.tonalIcon(

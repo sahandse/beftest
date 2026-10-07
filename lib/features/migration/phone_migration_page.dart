@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../network/nearby_device.dart';
+import '../../core/migration_draft_store.dart';
 import '../send/send_page.dart';
 
 class PhoneMigrationPage extends StatefulWidget {
   final List<NearbyDevice> devices;
   final Stream<List<NearbyDevice>>? devicesStream;
   final Future<List<String>> Function(SendCategory category) onPickCategory;
-  final Future<void> Function(
+  final Future<bool> Function(
     NearbyDevice device,
     List<String> paths,
   ) onSend;
@@ -34,8 +35,11 @@ class PhoneMigrationPage extends StatefulWidget {
 class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
   late List<NearbyDevice> _devices;
   StreamSubscription<List<NearbyDevice>>? _sub;
+  final MigrationDraftStore _draftStore = MigrationDraftStore();
   bool _oldPhone = true;
   bool _preparing = false;
+  bool _loadingDraft = true;
+  MigrationDraft? _draft;
   bool _sending = false;
   final Set<SendCategory> _selected = {
     SendCategory.photos,
@@ -65,6 +69,34 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     _sub = widget.devicesStream?.listen((items) {
       if (!mounted) return;
       setState(() => _devices = items.toList(growable: false));
+    });
+    _loadDraft();
+  }
+
+  Future<void> _loadDraft() async {
+    final draft = await _draftStore.load();
+    if (!mounted) return;
+    setState(() {
+      _draft = draft;
+      _loadingDraft = false;
+    });
+  }
+
+  Future<void> _useDraft() async {
+    final draft = _draft;
+    if (draft == null) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _prepared = List<String>.from(draft.paths);
+    });
+  }
+
+  Future<void> _discardDraft() async {
+    await _draftStore.clear();
+    if (!mounted) return;
+    setState(() {
+      _draft = null;
+      _prepared = const [];
     });
   }
 
@@ -133,6 +165,11 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
         if (!mounted) return;
         setState(() => _prepared = List<String>.from(all));
       }
+      if (all.isNotEmpty) {
+        await _draftStore.save(all);
+        final draft = await _draftStore.load();
+        if (mounted) setState(() => _draft = draft);
+      }
     } finally {
       if (mounted) setState(() => _preparing = false);
     }
@@ -143,8 +180,22 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     HapticFeedback.mediumImpact();
     setState(() => _sending = true);
     try {
-      await widget.onSend(device, _prepared);
-      if (mounted) Navigator.pop(context);
+      final success = await widget.onSend(device, _prepared);
+      if (!mounted) return;
+      if (success) {
+        await _draftStore.clear();
+        if (!mounted) return;
+        setState(() => _draft = null);
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'انتقال کامل نشد؛ موارد انتخاب‌شده برای «ادامه انتقال» ذخیره شدند.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -234,6 +285,49 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
             ),
             const SizedBox(height: 18),
             if (_oldPhone) ...[
+              if (_loadingDraft)
+                const LinearProgressIndicator()
+              else if (_draft != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cs.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.restore_rounded, size: 30),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'ادامه انتقال قبلی',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text('${_draft!.paths.length} مورد آماده ادامه انتقال'),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'حذف',
+                        onPressed: _discardDraft,
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: _useDraft,
+                        child: const Text('ادامه'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 children: [
                   const Expanded(

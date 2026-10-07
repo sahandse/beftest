@@ -43,6 +43,7 @@ class SendPage extends StatefulWidget {
   final CheckAppUpdates? onCheckAppUpdates;
   final ReceiveAppUpdates? onReceiveAppUpdates;
   final PickSendCategory? onPickCategory;
+  final Future<void> Function()? onRefreshDevices;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -63,6 +64,7 @@ class SendPage extends StatefulWidget {
     this.onCheckAppUpdates,
     this.onReceiveAppUpdates,
     this.onPickCategory,
+    this.onRefreshDevices,
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,

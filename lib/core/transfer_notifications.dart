@@ -11,11 +11,6 @@ class TransferNotifications {
     const settings = InitializationSettings(android: android);
     await _plugin.initialize(settings: settings);
 
-    final androidPlugin =
-        _plugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.requestNotificationsPermission();
-
     _initialized = true;
   }
 

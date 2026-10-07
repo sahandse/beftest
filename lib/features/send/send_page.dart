@@ -17,6 +17,10 @@ typedef ReceiveAppUpdates = Future<void> Function(
   void Function(PeerAppUpdate update, int received, int? total) onProgress,
 );
 
+typedef PickSendCategory = Future<List<String>> Function(
+  SendCategory category,
+);
+
 enum SendCategory {
   photos,
   videos,
@@ -35,6 +39,8 @@ class SendPage extends StatefulWidget {
   final VoidCallback? onOpenHistory;
   final CheckAppUpdates? onCheckAppUpdates;
   final ReceiveAppUpdates? onReceiveAppUpdates;
+  final PickSendCategory? onPickCategory;
+  final VoidCallback? onOpenReceive;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -53,6 +59,8 @@ class SendPage extends StatefulWidget {
     this.onOpenHistory,
     this.onCheckAppUpdates,
     this.onReceiveAppUpdates,
+    this.onPickCategory,
+    this.onOpenReceive,
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,
@@ -65,6 +73,8 @@ class SendPage extends StatefulWidget {
 class _SendPageState extends State<SendPage> {
   late List<NearbyDevice> _devices;
   SendCategory? _selectedCategory;
+  List<String> _selectedPaths = const [];
+  bool _pickingCategory = false;
   bool _queueExpanded = false;
   final Map<String, List<PeerAppUpdate>> _appUpdates = {};
   final Set<String> _checkedUpdatePeers = {};
@@ -361,6 +371,35 @@ class _SendPageState extends State<SendPage> {
     });
   }
 
+  Future<void> _pickCategory(SendCategory category) async {
+    final picker = widget.onPickCategory;
+    if (picker == null || _pickingCategory || widget.sessionController.isActive) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _pickingCategory = true;
+      _selectedCategory = category;
+      _selectedPaths = const [];
+    });
+
+    try {
+      final paths = await picker(category);
+      if (!mounted) return;
+      setState(() {
+        _selectedPaths = paths;
+        if (paths.isEmpty) {
+          _selectedCategory = null;
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _pickingCategory = false);
+      }
+    }
+  }
+
   Future<void> _sendToDevice(NearbyDevice device) async {
     if (widget.sessionController.isActive) return;
 
@@ -372,12 +411,24 @@ class _SendPageState extends State<SendPage> {
     }
 
     final category = _selectedCategory;
-    if (category == null) {
+    if (category == null || _selectedPaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('اول نوع فایل یا محتوا را انتخاب کن.'),
         ),
       );
+      return;
+    }
+
+    if (widget.onSendShared != null) {
+      final paths = List<String>.from(_selectedPaths);
+      await widget.onSendShared!(device, paths);
+      if (mounted) {
+        setState(() {
+          _selectedPaths = const [];
+          _selectedCategory = null;
+        });
+      }
       return;
     }
 
@@ -543,15 +594,44 @@ class _SendPageState extends State<SendPage> {
                       icon: _iconFor(category),
                       label: _labelFor(category),
                       selected: _selectedCategory == category,
-                      onTap: session.isActive
+                      onTap: session.isActive || _pickingCategory
                           ? null
-                          : () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _selectedCategory = category);
-                            },
+                          : () => _pickCategory(category),
                     );
                   },
                 ),
+                if (_selectedPaths.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      color: cs.primaryContainer,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Text(
+                            '${_selectedPaths.length} مورد آماده ارسال • حالا دستگاه مقصد را انتخاب کن',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'پاک کردن انتخاب',
+                          onPressed: () => setState(() {
+                            _selectedPaths = const [];
+                            _selectedCategory = null;
+                          }),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (widget.sharedPaths.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Container(

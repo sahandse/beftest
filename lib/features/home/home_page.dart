@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -23,6 +24,8 @@ import '../../network/transfer_server.dart';
 import '../../network/transfer_service.dart';
 import '../receive/receive_page.dart';
 import '../history/history_page.dart';
+import '../migration/phone_migration_page.dart';
+import '../transfer/transfer_motion_overlay.dart';
 import '../send/send_page.dart';
 import '../send/apps_picker_page.dart';
 import '../settings/settings_page.dart';
@@ -54,6 +57,11 @@ class _HomePageState extends State<HomePage> {
   Set<String> _trustedFingerprints = <String>{};
   Map<String, String> _pendingRelativePaths = const {};
   String? _networkError;
+  String? _visualPeer;
+  int _visualItemCount = 0;
+  int _incomingRemaining = 0;
+  TransferVisualDirection? _visualDirection;
+  Timer? _visualSafetyTimer;
 
   @override
   void initState() {
@@ -95,6 +103,50 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _showTransferVisual({
+    required String peer,
+    required int itemCount,
+    required TransferVisualDirection direction,
+  }) {
+    _visualSafetyTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _visualPeer = peer;
+      _visualItemCount = itemCount;
+      _visualDirection = direction;
+    });
+    _visualSafetyTimer = Timer(const Duration(minutes: 10), () {
+      if (!mounted) return;
+      setState(() {
+        _visualPeer = null;
+        _visualItemCount = 0;
+        _visualDirection = null;
+        _incomingRemaining = 0;
+      });
+    });
+  }
+
+  void _hideTransferVisual([TransferVisualDirection? direction]) {
+    if (!mounted) return;
+    if (direction != null && _visualDirection != direction) return;
+    _visualSafetyTimer?.cancel();
+    _visualSafetyTimer = null;
+    setState(() {
+      _visualPeer = null;
+      _visualItemCount = 0;
+      _visualDirection = null;
+    });
+  }
+
+  void _beginIncomingVisual(IncomingRequest incoming) {
+    _incomingRemaining = incoming.files.length;
+    _showTransferVisual(
+      peer: incoming.senderAlias,
+      itemCount: incoming.files.length,
+      direction: TransferVisualDirection.receiving,
+    );
+  }
+
   Future<void> _startNetwork() async {
     _server.onIncomingRequest = (incoming) async {
       if (!mounted) return false;
@@ -124,11 +176,13 @@ class _HomePageState extends State<HomePage> {
       }
 
       if (widget.settings.isQuickReceiveActive) {
+        _beginIncomingVisual(incoming);
         return true;
       }
 
       if (incoming.senderFingerprint.isNotEmpty &&
           await _trustedDevices.contains(incoming.senderFingerprint)) {
+        _beginIncomingVisual(incoming);
         return true;
       }
 
@@ -189,10 +243,15 @@ class _HomePageState extends State<HomePage> {
           alias: incoming.senderAlias,
         );
         await _refreshTrustedFingerprints();
+        _beginIncomingVisual(incoming);
         return true;
       }
 
-      return decision == 1;
+      if (decision == 1) {
+        _beginIncomingVisual(incoming);
+        return true;
+      }
+      return false;
     };
 
     _server.onAppUpdateRequest = (request) async {
@@ -228,6 +287,12 @@ class _HomePageState extends State<HomePage> {
     _server.onIncomingComplete = (event) async {
       if (event.success) {
         HapticFeedback.mediumImpact();
+      }
+      if (_incomingRemaining > 0) {
+        _incomingRemaining--;
+        if (_incomingRemaining == 0) {
+          _hideTransferVisual(TransferVisualDirection.receiving);
+        }
       }
       await _historyStore.add(
         HistoryItem(
@@ -453,6 +518,11 @@ class _HomePageState extends State<HomePage> {
         peer: device.alias,
         files: files,
       );
+      _showTransferVisual(
+        peer: device.alias,
+        itemCount: files.length,
+        direction: TransferVisualDirection.sending,
+      );
       try {
         await TransferBackgroundService.start(
           peer: device.alias,
@@ -534,6 +604,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } finally {
+      _hideTransferVisual(TransferVisualDirection.sending);
       _transferSession.finish();
       try {
         await TransferBackgroundService.stop();
@@ -697,8 +768,6 @@ class _HomePageState extends State<HomePage> {
             onCheckAppUpdates: _checkPeerAppUpdates,
             onReceiveAppUpdates: _receivePeerAppUpdates,
             onPickCategory: _pickPaths,
-            onOpenReceive: _openReceive,
-            onRefreshDevices: _restartNetwork,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(
@@ -706,6 +775,29 @@ class _HomePageState extends State<HomePage> {
               SendCategory.files,
               providedPaths: paths,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openMigration() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: PhoneMigrationPage(
+            devices: _devices,
+            devicesStream: _discovery.devicesStream,
+            onPickCategory: _pickPaths,
+            onSend: (device, paths) => _sendTo(
+              device,
+              SendCategory.files,
+              providedPaths: paths,
+            ),
+            onRefreshDevices: _restartNetwork,
+            onOpenReceive: _openReceive,
           ),
         ),
       ),
@@ -726,6 +818,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _visualSafetyTimer?.cancel();
     _shareIntent.dispose();
     _transferSession.dispose();
     _discovery.dispose();
@@ -761,7 +854,9 @@ class _HomePageState extends State<HomePage> {
     );
 
     return Scaffold(
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -860,6 +955,71 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
               ),
+              const SizedBox(height: 12),
+              _MigrationHomeCard(onTap: _openMigration),
+            ],
+          ),
+        ),
+          ),
+          if (_visualPeer != null && _visualDirection != null)
+            Positioned.fill(
+              child: TransferMotionOverlay(
+                peer: _visualPeer!,
+                direction: _visualDirection!,
+                itemCount: _visualItemCount,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MigrationHomeCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _MigrationHomeCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.secondaryContainer,
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: cs.onSecondaryContainer.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.phonelink_rounded),
+              ),
+              const SizedBox(width: 13),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'گوشی قدیمی → گوشی جدید',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text('انتقال گروهی و مستقل از ارسال و دریافت عادی'),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_left_rounded),
             ],
           ),
         ),

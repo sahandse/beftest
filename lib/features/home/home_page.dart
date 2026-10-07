@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -24,7 +25,6 @@ import '../receive/receive_page.dart';
 import '../history/history_page.dart';
 import '../send/send_page.dart';
 import '../send/apps_picker_page.dart';
-import '../send/grouped_photos_picker_page.dart';
 import '../settings/settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -293,13 +293,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<String>> _pickPaths(SendCategory category) async {
     if (category == SendCategory.photos) {
-      final paths = await Navigator.push<List<String>>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const GroupedPhotosPickerPage(),
-        ),
+      final images = await ImagePicker().pickMultiImage(
+        requestFullMetadata: false,
       );
-      return paths ?? const [];
+      return images.map((image) => image.path).toList(growable: false);
     }
 
     if (category == SendCategory.apps) {

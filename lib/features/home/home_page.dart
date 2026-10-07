@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/app_settings.dart';
+import '../../core/app_inventory_service.dart';
 import '../../core/share_intent_service.dart';
 import '../../core/storage_guard.dart';
 import '../../core/trusted_devices_store.dart';
@@ -191,6 +192,36 @@ class _HomePageState extends State<HomePage> {
       }
 
       return decision == 1;
+    };
+
+    _server.onAppUpdateRequest = (request) async {
+      if (!mounted) return false;
+
+      final approved = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.system_update_alt_rounded),
+          title: Text('ارسال بروزرسانی به ${request.senderAlias}؟'),
+          content: Text(
+            '${request.packageNames.length} برنامه برای بروزرسانی درخواست شده. '
+            'فقط APK همین موارد ارسال می‌شود.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('رد'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.upload_rounded),
+              label: const Text('تأیید ارسال'),
+            ),
+          ],
+        ),
+      );
+
+      return approved ?? false;
     };
 
     _server.onIncomingComplete = (event) async {
@@ -485,6 +516,54 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<List<PeerAppUpdate>> _checkPeerAppUpdates(
+    NearbyDevice device,
+  ) async {
+    return _transfer.checkAppUpdates(
+      device: device,
+      alias: widget.settings.alias,
+      fingerprint: widget.settings.fingerprint,
+    );
+  }
+
+  Future<void> _receivePeerAppUpdates(
+    NearbyDevice device,
+    List<PeerAppUpdate> updates,
+    void Function(
+      PeerAppUpdate update,
+      int received,
+      int? total,
+    ) onProgress,
+  ) async {
+    final files = await _transfer.receiveAppUpdates(
+      device: device,
+      alias: widget.settings.alias,
+      fingerprint: widget.settings.fingerprint,
+      updates: updates,
+      onProgress: onProgress,
+    );
+
+    for (final file in files) {
+      final stat = await file.stat();
+      await _historyStore.add(
+        HistoryItem(
+          id: _uuid.v4(),
+          peer: device.alias,
+          fileName: file.uri.pathSegments.last,
+          size: stat.size,
+          sent: false,
+          success: true,
+          createdAt: DateTime.now(),
+          peerFingerprint: device.fingerprint,
+        ),
+      );
+    }
+
+    if (files.isNotEmpty) {
+      HapticFeedback.mediumImpact();
+    }
+  }
+
   Future<void> _retryHistoryItem(HistoryItem item) async {
     final path = item.sourcePath;
     if (path == null || path.isEmpty || !await File(path).exists()) {
@@ -560,6 +639,8 @@ class _HomePageState extends State<HomePage> {
             sessionController: _transferSession,
             trustedFingerprints: _trustedFingerprints,
             onOpenHistory: _openHistory,
+            onCheckAppUpdates: _checkPeerAppUpdates,
+            onReceiveAppUpdates: _receivePeerAppUpdates,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(

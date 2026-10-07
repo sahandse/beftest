@@ -194,6 +194,9 @@ class _HomePageState extends State<HomePage> {
     };
 
     _server.onIncomingComplete = (event) async {
+      if (event.success) {
+        HapticFeedback.mediumImpact();
+      }
       await _historyStore.add(
         HistoryItem(
           id: _uuid.v4(),
@@ -452,6 +455,7 @@ class _HomePageState extends State<HomePage> {
         peer: device.alias,
         filesCount: files.length,
       );
+      HapticFeedback.mediumImpact();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ارسال به ${device.alias} کامل شد')),

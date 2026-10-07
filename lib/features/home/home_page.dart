@@ -50,6 +50,7 @@ class _HomePageState extends State<HomePage> {
   final _transferSession = TransferSessionController();
 
   List<NearbyDevice> _devices = const [];
+  Set<String> _trustedFingerprints = <String>{};
   Map<String, String> _pendingRelativePaths = const {};
 
   @override
@@ -60,7 +61,17 @@ class _HomePageState extends State<HomePage> {
       setState(() => _devices = devices);
     });
     TransferBackgroundService.initialize();
+    _refreshTrustedFingerprints();
     _initializeSecureTransfer();
+  }
+
+  Future<void> _refreshTrustedFingerprints() async {
+    final devices = await _trustedDevices.load();
+    if (!mounted) return;
+    setState(() {
+      _trustedFingerprints =
+          devices.map((device) => device.fingerprint).toSet();
+    });
   }
 
   Future<void> _initializeSecureTransfer() async {
@@ -175,6 +186,7 @@ class _HomePageState extends State<HomePage> {
           fingerprint: incoming.senderFingerprint,
           alias: incoming.senderAlias,
         );
+        await _refreshTrustedFingerprints();
         return true;
       }
 
@@ -528,6 +540,7 @@ class _HomePageState extends State<HomePage> {
           child: SendPage(
             devices: _devices,
             sessionController: _transferSession,
+            trustedFingerprints: _trustedFingerprints,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(

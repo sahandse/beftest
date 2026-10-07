@@ -20,6 +20,7 @@ enum SendCategory {
 class SendPage extends StatefulWidget {
   final List<NearbyDevice> devices;
   final TransferSessionController sessionController;
+  final Set<String> trustedFingerprints;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -34,6 +35,7 @@ class SendPage extends StatefulWidget {
     super.key,
     required this.devices,
     required this.sessionController,
+    this.trustedFingerprints = const <String>{},
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,
@@ -320,6 +322,8 @@ class _SendPageState extends State<SendPage> {
                         .map(
                           (device) => _DeviceBubble(
                             device: device,
+                            trusted: widget.trustedFingerprints
+                                .contains(device.fingerprint),
                             disabled: session.isActive,
                             onTap: () => _sendToDevice(device),
                           ),
@@ -411,11 +415,13 @@ class _CategoryCard extends StatelessWidget {
 
 class _DeviceBubble extends StatelessWidget {
   final NearbyDevice device;
+  final bool trusted;
   final bool disabled;
   final VoidCallback onTap;
 
   const _DeviceBubble({
     required this.device,
+    required this.trusted,
     required this.disabled,
     required this.onTap,
   });
@@ -454,6 +460,26 @@ class _DeviceBubble extends StatelessWidget {
                       ),
                       child: Icon(deviceIcon),
                     ),
+                    if (trusted)
+                      PositionedDirectional(
+                        start: -4,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: cs.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.verified_rounded,
+                            size: 13,
+                          ),
+                        ),
+                      ),
                     if (device.supportsResume)
                       PositionedDirectional(
                         end: -4,
@@ -487,7 +513,11 @@ class _DeviceBubble extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  device.supportsResume ? 'اتصال سریع' : 'دستگاه نزدیک',
+                  trusted
+                      ? 'مورداعتماد'
+                      : device.supportsResume
+                          ? 'اتصال سریع'
+                          : 'دستگاه نزدیک',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

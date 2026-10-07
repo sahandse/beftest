@@ -31,8 +31,23 @@ jobs:
 
       - name: Configure Android SDK
         run: |
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 37/' android/app/build.gradle.kts
-          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/' android/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 37")
+          s = s.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 35")
+          if "isCoreLibraryDesugaringEnabled = true" not in s:
+              s = s.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                  1,
+              )
+          dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
+          if dep not in s:
+              s += '\n\ndependencies {\n    ' + dep + '\n}\n'
+          p.write_text(s)
+          PY
 
       - name: Generate persistent release keystore
         shell: bash
@@ -40,6 +55,7 @@ jobs:
           set -euo pipefail
           RELEASE_PASS="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
           RELEASE_ALIAS="befrest"
+          echo "::add-mask::$RELEASE_PASS"
           echo "RELEASE_PASS=$RELEASE_PASS" >> "$GITHUB_ENV"
           echo "RELEASE_ALIAS=$RELEASE_ALIAS" >> "$GITHUB_ENV"
 

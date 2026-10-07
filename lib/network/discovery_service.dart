@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'nearby_device.dart';
 import '../core/tls_identity.dart';
 
@@ -9,8 +11,13 @@ class DiscoveryService {
   static const String multicastAddress = '224.0.0.167';
   static const int port = 53317;
 
+  static const MethodChannel _networkChannel =
+      MethodChannel('ir.befrest/network');
+
   RawDatagramSocket? _socket;
+  Timer? _announceTimer;
   final _devices = <String, NearbyDevice>{};
+  final _lastSeen = <String, DateTime>{};
   final _controller = StreamController<List<NearbyDevice>>.broadcast();
 
   Stream<List<NearbyDevice>> get devicesStream => _controller.stream;
@@ -25,6 +32,8 @@ class DiscoveryService {
       return;
     }
 
+    await _networkChannel.invokeMethod<bool>('acquireMulticastLock');
+
     _socket = await RawDatagramSocket.bind(
       InternetAddress.anyIPv4,
       port,
@@ -32,6 +41,7 @@ class DiscoveryService {
       reusePort: false,
     );
 
+    _socket!.broadcastEnabled = true;
     _socket!.joinMulticast(InternetAddress(multicastAddress));
     _socket!.listen((event) async {
       if (event != RawSocketEvent.read) return;
@@ -57,7 +67,8 @@ class DiscoveryService {
               .contains('app-updates-v1'),
         );
         _devices[remoteFingerprint] = remote;
-        _controller.add(_devices.values.toList(growable: false));
+        _lastSeen[remoteFingerprint] = DateTime.now();
+        _publishDevices();
 
         if (data['announce'] == true) {
           await _registerTo(remote, alias, fingerprint, identity);
@@ -67,6 +78,14 @@ class DiscoveryService {
     });
 
     _announce(alias: alias, fingerprint: fingerprint);
+    _announceTimer?.cancel();
+    _announceTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) {
+        _announce(alias: alias, fingerprint: fingerprint);
+        _pruneStale();
+      },
+    );
   }
 
   void _announce({
@@ -101,7 +120,13 @@ class DiscoveryService {
       'app': 'befrest',
       'features': const ['resume-v1', 'queue-v1', 'app-updates-v1'],
     }));
-    _socket?.send(payload, InternetAddress(multicastAddress), port);
+    try {
+      _socket?.send(payload, InternetAddress(multicastAddress), port);
+    } catch (_) {}
+
+    try {
+      _socket?.send(payload, InternetAddress('255.255.255.255'), port);
+    } catch (_) {}
   }
 
   Future<void> _registerTo(
@@ -142,6 +167,32 @@ class DiscoveryService {
     }
   }
 
+  void _publishDevices() {
+    _controller.add(
+      _devices.values.toList(growable: false)
+        ..sort((a, b) => a.alias.compareTo(b.alias)),
+    );
+  }
+
+  void _pruneStale() {
+    final now = DateTime.now();
+    final stale = _lastSeen.entries
+        .where(
+          (entry) =>
+              now.difference(entry.value) > const Duration(seconds: 8),
+        )
+        .map((entry) => entry.key)
+        .toList(growable: false);
+
+    if (stale.isEmpty) return;
+
+    for (final fingerprint in stale) {
+      _lastSeen.remove(fingerprint);
+      _devices.remove(fingerprint);
+    }
+    _publishDevices();
+  }
+
   DeviceType _parseType(String value) {
     switch (value) {
       case 'desktop':
@@ -156,8 +207,15 @@ class DiscoveryService {
   }
 
   Future<void> dispose() async {
+    _announceTimer?.cancel();
+    _announceTimer = null;
     _socket?.close();
     _socket = null;
+    _devices.clear();
+    _lastSeen.clear();
+    try {
+      await _networkChannel.invokeMethod<bool>('releaseMulticastLock');
+    } catch (_) {}
     await _controller.close();
   }
 }

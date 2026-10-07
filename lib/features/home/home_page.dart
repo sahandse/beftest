@@ -57,10 +57,9 @@ class _HomePageState extends State<HomePage> {
   Set<String> _trustedFingerprints = <String>{};
   Map<String, String> _pendingRelativePaths = const {};
   String? _networkError;
-  String? _visualPeer;
-  int _visualItemCount = 0;
   int _incomingRemaining = 0;
   TransferVisualDirection? _visualDirection;
+  OverlayEntry? _transferOverlayEntry;
   Timer? _visualSafetyTimer;
 
   @override
@@ -109,33 +108,36 @@ class _HomePageState extends State<HomePage> {
     required TransferVisualDirection direction,
   }) {
     _visualSafetyTimer?.cancel();
-    if (!mounted) return;
-    setState(() {
-      _visualPeer = peer;
-      _visualItemCount = itemCount;
-      _visualDirection = direction;
-    });
+    _transferOverlayEntry?.remove();
+    _transferOverlayEntry = null;
+    _visualDirection = direction;
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (_) => Positioned.fill(
+        child: TransferMotionOverlay(
+          peer: peer,
+          direction: direction,
+          itemCount: itemCount,
+        ),
+      ),
+    );
+    _transferOverlayEntry = entry;
+    overlay.insert(entry);
+
     _visualSafetyTimer = Timer(const Duration(minutes: 10), () {
-      if (!mounted) return;
-      setState(() {
-        _visualPeer = null;
-        _visualItemCount = 0;
-        _visualDirection = null;
-        _incomingRemaining = 0;
-      });
+      _hideTransferVisual();
+      _incomingRemaining = 0;
     });
   }
 
   void _hideTransferVisual([TransferVisualDirection? direction]) {
-    if (!mounted) return;
     if (direction != null && _visualDirection != direction) return;
     _visualSafetyTimer?.cancel();
     _visualSafetyTimer = null;
-    setState(() {
-      _visualPeer = null;
-      _visualItemCount = 0;
-      _visualDirection = null;
-    });
+    _transferOverlayEntry?.remove();
+    _transferOverlayEntry = null;
+    _visualDirection = null;
   }
 
   void _beginIncomingVisual(IncomingRequest incoming) {
@@ -819,6 +821,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _visualSafetyTimer?.cancel();
+    _transferOverlayEntry?.remove();
+    _transferOverlayEntry = null;
     _shareIntent.dispose();
     _transferSession.dispose();
     _discovery.dispose();
@@ -854,9 +858,7 @@ class _HomePageState extends State<HomePage> {
     );
 
     return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
+      body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -960,16 +962,6 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
-          ),
-          if (_visualPeer != null && _visualDirection != null)
-            Positioned.fill(
-              child: TransferMotionOverlay(
-                peer: _visualPeer!,
-                direction: _visualDirection!,
-                itemCount: _visualItemCount,
-              ),
-            ),
-        ],
       ),
     );
   }

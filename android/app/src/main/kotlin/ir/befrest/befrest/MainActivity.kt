@@ -4,6 +4,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
+import android.net.wifi.WifiManager
+import android.content.Context
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -13,6 +15,9 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val appExportChannelName = "ir.befrest/app_export"
     private val shareChannelName = "ir.befrest/share_intent"
+    private val networkChannelName = "ir.befrest/network"
+
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private var shareChannel: MethodChannel? = null
     private val pendingSharedPaths = mutableListOf<String>()
@@ -82,6 +87,53 @@ class MainActivity : FlutterActivity() {
                         result.error(
                             "APK_EXPORT_FAILED",
                             error.message ?: "Failed to export APK",
+                            null
+                        )
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            networkChannelName
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "acquireMulticastLock" -> {
+                    try {
+                        if (multicastLock?.isHeld != true) {
+                            val wifiManager = applicationContext
+                                .getSystemService(Context.WIFI_SERVICE) as WifiManager
+                            multicastLock = wifiManager
+                                .createMulticastLock("befrest-multicast")
+                                .apply {
+                                    setReferenceCounted(false)
+                                    acquire()
+                                }
+                        }
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error(
+                            "MULTICAST_LOCK_FAILED",
+                            error.message ?: "Unable to acquire multicast lock",
+                            null
+                        )
+                    }
+                }
+
+                "releaseMulticastLock" -> {
+                    try {
+                        if (multicastLock?.isHeld == true) {
+                            multicastLock?.release()
+                        }
+                        multicastLock = null
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error(
+                            "MULTICAST_UNLOCK_FAILED",
+                            error.message ?: "Unable to release multicast lock",
                             null
                         )
                     }
@@ -202,6 +254,18 @@ class MainActivity : FlutterActivity() {
         }
 
         return destination.absolutePath
+    }
+
+    override fun onDestroy() {
+        try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+            }
+        } catch (_: Exception) {
+        } finally {
+            multicastLock = null
+        }
+        super.onDestroy()
     }
 
     private fun queryDisplayName(uri: Uri): String? {

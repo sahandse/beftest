@@ -68,7 +68,7 @@ class _ReceivePageState extends State<ReceivePage>
         'port': 53317,
         'protocol': 'https',
         'version': '2.2',
-        'features': const ['resume-v1', 'queue-v1'],
+        'features': const ['resume-v1', 'queue-v1', 'app-updates-v1'],
       });
     });
   }

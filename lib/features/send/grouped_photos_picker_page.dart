@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 class GroupedPhotosPickerPage extends StatefulWidget {
@@ -118,6 +119,7 @@ class _GroupedPhotosPickerPageState extends State<GroupedPhotosPickerPage> {
   }
 
   void _toggle(AssetEntity asset) {
+    HapticFeedback.selectionClick();
     setState(() {
       if (!_selectedIds.add(asset.id)) {
         _selectedIds.remove(asset.id);
@@ -126,6 +128,7 @@ class _GroupedPhotosPickerPageState extends State<GroupedPhotosPickerPage> {
   }
 
   void _toggleGroup(List<AssetEntity> assets) {
+    HapticFeedback.lightImpact();
     final allSelected =
         assets.every((asset) => _selectedIds.contains(asset.id));
     setState(() {
@@ -354,22 +357,31 @@ class _DaySection extends StatelessWidget {
               ),
             ],
           ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: assets.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 4,
-              crossAxisSpacing: 4,
-            ),
-            itemBuilder: (context, index) {
-              final asset = assets[index];
-              final selected = selectedIds.contains(asset.id);
-              return _AssetTile(
-                asset: asset,
-                selected: selected,
-                onTap: () => onToggleAsset(asset),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 800
+                  ? 8
+                  : constraints.maxWidth >= 560
+                      ? 6
+                      : 4;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: assets.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 5,
+                  crossAxisSpacing: 5,
+                ),
+                itemBuilder: (context, index) {
+                  final asset = assets[index];
+                  final selected = selectedIds.contains(asset.id);
+                  return _AssetTile(
+                    asset: asset,
+                    selected: selected,
+                    onTap: () => onToggleAsset(asset),
+                  );
+                },
               );
             },
           ),

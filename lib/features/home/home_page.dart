@@ -698,6 +698,7 @@ class _HomePageState extends State<HomePage> {
             onReceiveAppUpdates: _receivePeerAppUpdates,
             onPickCategory: _pickPaths,
             onOpenReceive: _openReceive,
+            onRefreshDevices: _restartNetwork,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(

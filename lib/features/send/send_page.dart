@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/transfer_session_controller.dart';
 import '../../network/nearby_device.dart';
@@ -45,6 +46,7 @@ class SendPage extends StatefulWidget {
 class _SendPageState extends State<SendPage> {
   late List<NearbyDevice> _devices;
   SendCategory? _selectedCategory;
+  bool _queueExpanded = false;
 
   @override
   void initState() {
@@ -56,6 +58,7 @@ class _SendPageState extends State<SendPage> {
   }
 
   Future<void> _scanQr() async {
+    HapticFeedback.lightImpact();
     final device = await Navigator.push<NearbyDevice>(
       context,
       MaterialPageRoute(
@@ -75,6 +78,8 @@ class _SendPageState extends State<SendPage> {
 
   Future<void> _sendToDevice(NearbyDevice device) async {
     if (widget.sessionController.isActive) return;
+
+    HapticFeedback.mediumImpact();
 
     if (widget.sharedPaths.isNotEmpty && widget.onSendShared != null) {
       await widget.onSendShared!(device, widget.sharedPaths);
@@ -191,6 +196,8 @@ class _SendPageState extends State<SendPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
+    final gridCount = width >= 900 ? 6 : width >= 600 ? 5 : 4;
 
     return AnimatedBuilder(
       animation: widget.sessionController,
@@ -199,30 +206,50 @@ class _SendPageState extends State<SendPage> {
 
         return Scaffold(
           appBar: AppBar(title: const Text('ارسال')),
+          bottomNavigationBar: session.items.isEmpty
+              ? null
+              : SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                  child: _FloatingTransferCard(
+                    controller: session,
+                    expanded: _queueExpanded,
+                    onToggle: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _queueExpanded = !_queueExpanded);
+                    },
+                    formatSpeed: _formatSpeed,
+                    formatEta: _formatEta,
+                    statusText: _statusText,
+                    statusIcon: _statusIcon,
+                  ),
+                ),
           body: SafeArea(
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 28),
               children: [
                 const Text(
                   'چی می‌خوای بفرستی؟',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 25,
                     fontWeight: FontWeight.w900,
+                    letterSpacing: -.5,
                   ),
                 ),
-                const SizedBox(height: 6),
-                const Text('نوع محتوا را انتخاب کن و بعد دستگاه مقصد را بزن.'),
+                const SizedBox(height: 5),
+                Text(
+                  'محتوا را انتخاب کن و بعد روی دستگاه مقصد بزن',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
                 const SizedBox(height: 18),
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: SendCategory.values.length,
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: gridCount,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childAspectRatio: .92,
+                    childAspectRatio: width >= 600 ? 1.15 : .92,
                   ),
                   itemBuilder: (context, index) {
                     final category = SendCategory.values[index];
@@ -233,17 +260,16 @@ class _SendPageState extends State<SendPage> {
                       onTap: session.isActive
                           ? null
                           : () {
-                              setState(() {
-                                _selectedCategory = category;
-                              });
+                              HapticFeedback.selectionClick();
+                              setState(() => _selectedCategory = category);
                             },
                     );
                   },
                 ),
                 if (widget.sharedPaths.isNotEmpty) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(22),
                       color: cs.secondaryContainer,
@@ -251,7 +277,7 @@ class _SendPageState extends State<SendPage> {
                     child: Row(
                       children: [
                         const Icon(Icons.ios_share_rounded),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 11),
                         Expanded(
                           child: Text(
                             '${widget.sharedPaths.length} فایل از Share آماده ارسال است',
@@ -264,7 +290,7 @@ class _SendPageState extends State<SendPage> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 28),
+                const SizedBox(height: 26),
                 Row(
                   children: [
                     const Expanded(
@@ -276,58 +302,32 @@ class _SendPageState extends State<SendPage> {
                         ),
                       ),
                     ),
-                    OutlinedButton.icon(
+                    IconButton.filledTonal(
+                      tooltip: 'اسکن QR',
                       onPressed: session.isActive ? null : _scanQr,
                       icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('اسکن QR'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 if (_devices.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      color: cs.surfaceContainerLow,
-                    ),
-                    child: const Column(
-                      children: [
-                        Icon(Icons.radar_rounded, size: 38),
-                        SizedBox(height: 10),
-                        Text(
-                          'دستگاهی پیدا نشد',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'دستگاه دوم باید روی همین شبکه باشد. می‌توانی QR را هم اسکن کنی.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  )
+                  const _DevicesEmptyState()
                 else
-                  ..._devices.map(
-                    (device) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _DeviceCard(
-                        device: device,
-                        disabled: session.isActive,
-                        onTap: () => _sendToDevice(device),
-                      ),
-                    ),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _devices
+                        .map(
+                          (device) => _DeviceBubble(
+                            device: device,
+                            disabled: session.isActive,
+                            onTap: () => _sendToDevice(device),
+                          ),
+                        )
+                        .toList(growable: false),
                   ),
-                if (session.items.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  _TransferQueuePanel(
-                    controller: session,
-                    formatSpeed: _formatSpeed,
-                    formatEta: _formatEta,
-                    statusText: _statusText,
-                    statusIcon: _statusIcon,
-                  ),
-                ],
+                if (session.items.isNotEmpty)
+                  const SizedBox(height: 112),
               ],
             ),
           ),
@@ -354,92 +354,54 @@ class _CategoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Material(
-      color: selected ? cs.primaryContainer : cs.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 28,
-              color: selected ? cs.onPrimaryContainer : null,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? cs.onPrimaryContainer : null,
-              ),
-            ),
-          ],
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 170),
+      curve: Curves.easeOutBack,
+      scale: selected ? 1.035 : 1,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: selected ? cs.primaryContainer : cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(selected ? 28 : 22),
         ),
-      ),
-    );
-  }
-}
-
-class _DeviceCard extends StatelessWidget {
-  final NearbyDevice device;
-  final bool disabled;
-  final VoidCallback onTap;
-
-  const _DeviceCard({
-    required this.device,
-    required this.disabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: disabled ? null : onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                child: Icon(
-                  device.type == DeviceType.desktop
-                      ? Icons.laptop_rounded
-                      : Icons.smartphone_rounded,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(selected ? 28 : 22),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(selected ? 28 : 22),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  width: selected ? 42 : 36,
+                  height: selected ? 42 : 36,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? cs.onPrimaryContainer.withValues(alpha: .09)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 26,
+                    color: selected ? cs.onPrimaryContainer : null,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      device.alias,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      device.supportsResume
-                          ? 'ادامه انتقال پشتیبانی می‌شود'
-                          : device.ip,
-                      textDirection: device.supportsResume
-                          ? TextDirection.rtl
-                          : TextDirection.ltr,
-                    ),
-                  ],
+                const SizedBox(height: 7),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    color: selected ? cs.onPrimaryContainer : null,
+                  ),
                 ),
-              ),
-              const Icon(Icons.arrow_back_rounded),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -447,15 +409,166 @@ class _DeviceCard extends StatelessWidget {
   }
 }
 
-class _TransferQueuePanel extends StatelessWidget {
+class _DeviceBubble extends StatelessWidget {
+  final NearbyDevice device;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  const _DeviceBubble({
+    required this.device,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final deviceIcon = device.type == DeviceType.desktop
+        ? Icons.laptop_rounded
+        : Icons.smartphone_rounded;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: disabled ? .48 : 1,
+      child: Material(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(26),
+        child: InkWell(
+          onTap: disabled ? null : onTap,
+          borderRadius: BorderRadius.circular(26),
+          child: Container(
+            width: 154,
+            padding: const EdgeInsets.all(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(deviceIcon),
+                    ),
+                    if (device.supportsResume)
+                      PositionedDirectional(
+                        end: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: cs.tertiaryContainer,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: cs.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.bolt_rounded,
+                            size: 13,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 13),
+                Text(
+                  device.alias,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  device.supportsResume ? 'اتصال سریع' : 'دستگاه نزدیک',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DevicesEmptyState extends StatelessWidget {
+  const _DevicesEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Column(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.primaryContainer.withValues(alpha: .45),
+                ),
+              ),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: cs.primaryContainer,
+                ),
+                child: const Icon(Icons.radar_rounded, size: 30),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'هنوز دستگاهی پیدا نشده',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'بفرست را روی دستگاه دوم باز کن و مطمئن شو هر دو روی یک شبکه هستند.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingTransferCard extends StatelessWidget {
   final TransferSessionController controller;
+  final bool expanded;
+  final VoidCallback onToggle;
   final String Function(double value) formatSpeed;
   final String Function(Duration? value) formatEta;
   final String Function(TransferStatus status) statusText;
   final IconData Function(TransferStatus status) statusIcon;
 
-  const _TransferQueuePanel({
+  const _FloatingTransferCard({
     required this.controller,
+    required this.expanded,
+    required this.onToggle,
     required this.formatSpeed,
     required this.formatEta,
     required this.statusText,
@@ -466,147 +579,182 @@ class _TransferQueuePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final percent = (controller.overallProgress * 100).round();
+    final done = !controller.isActive &&
+        controller.items.isNotEmpty &&
+        controller.items.every(
+          (item) => item.status == TransferStatus.completed,
+        );
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  controller.isActive
-                      ? 'ارسال به ${controller.peer}'
-                      : 'آخرین انتقال',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Text('$percent٪'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(value: controller.overallProgress),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _Metric(
-                  icon: Icons.speed_rounded,
-                  value: formatSpeed(controller.totalSpeed),
-                ),
-              ),
-              Expanded(
-                child: _Metric(
-                  icon: Icons.timer_outlined,
-                  value: formatEta(controller.overallEta),
-                ),
-              ),
-            ],
-          ),
-          if (controller.isActive) ...[
-            const SizedBox(height: 12),
-            Row(
+    return Material(
+      elevation: 12,
+      shadowColor: Colors.black.withValues(alpha: .18),
+      color: done ? cs.secondaryContainer : cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(30),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onToggle,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(17, 15, 17, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: controller.isPaused
-                        ? controller.resume
-                        : controller.pause,
-                    icon: Icon(
-                      controller.isPaused
-                          ? Icons.play_arrow_rounded
-                          : Icons.pause_rounded,
+                Row(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: Icon(
+                        done
+                            ? Icons.check_circle_rounded
+                            : controller.isPaused
+                                ? Icons.pause_circle_filled_rounded
+                                : Icons.send_rounded,
+                        key: ValueKey('$done-${controller.isPaused}'),
+                        size: 28,
+                      ),
                     ),
-                    label: Text(
-                      controller.isPaused ? 'ادامه' : 'توقف موقت',
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            done
+                                ? 'انتقال کامل شد'
+                                : 'ارسال به ${controller.peer}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            done
+                                ? '${controller.items.length} فایل'
+                                : '${formatSpeed(controller.totalSpeed)} • ${formatEta(controller.overallEta)}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
+                    Text(
+                      '$percent٪',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    AnimatedRotation(
+                      turns: expanded ? .5 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: const Icon(Icons.keyboard_arrow_up_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: controller.overallProgress,
+                    minHeight: 6,
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  tooltip: 'لغو انتقال',
-                  onPressed: controller.cancel,
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-          ] else if (controller.items.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            FilledButton.tonalIcon(
-              onPressed: controller.clear,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('فایل بیشتری بفرست'),
-            ),
-          ],
-          const SizedBox(height: 12),
-          ...controller.items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  Icon(statusIcon(item.status), size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                if (expanded) ...[
+                  const SizedBox(height: 13),
+                  if (controller.isActive)
+                    Row(
                       children: [
-                        Text(
-                          item.fileName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: controller.isPaused
+                                ? controller.resume
+                                : controller.pause,
+                            icon: Icon(
+                              controller.isPaused
+                                  ? Icons.play_arrow_rounded
+                                  : Icons.pause_rounded,
+                            ),
+                            label: Text(
+                              controller.isPaused ? 'ادامه' : 'توقف موقت',
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        LinearProgressIndicator(value: item.progress),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: 'لغو انتقال',
+                          onPressed: controller.cancel,
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                       ],
+                    )
+                  else if (controller.items.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: controller.clear,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('فایل بیشتری بفرست'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 72,
-                    child: Text(
-                      statusText(item.status),
-                      textAlign: TextAlign.end,
-                      style: Theme.of(context).textTheme.bodySmall,
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 190),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: controller.items
+                            .map(
+                              (item) => Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(statusIcon(item.status), size: 20),
+                                    const SizedBox(width: 9),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.fileName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          LinearProgressIndicator(
+                                            value: item.progress,
+                                            minHeight: 4,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      statusText(item.status),
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _Metric extends StatelessWidget {
-  final IconData icon;
-  final String value;
-
-  const _Metric({
-    required this.icon,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 6),
-        Flexible(child: Text(value)),
-      ],
     );
   }
 }

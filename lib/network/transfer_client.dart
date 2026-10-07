@@ -14,7 +14,9 @@ class TransferClient {
   });
 
   HttpClient _clientFor(NearbyDevice device) {
-    final client = HttpClient(context: identity.createClientContext());
+    final client = HttpClient(context: identity.createClientContext())
+      ..connectionTimeout = const Duration(seconds: 5)
+      ..idleTimeout = const Duration(seconds: 20);
     client.badCertificateCallback = (certificate, host, port) {
       final actual =
           TlsIdentityStore.fingerprintFromCertificate(certificate);
@@ -45,7 +47,7 @@ class TransferClient {
           'deviceType': 'mobile',
           'fingerprint': fingerprint,
           'port': 53317,
-          'protocol': 'http',
+          'protocol': 'https',
           'download': false,
         },
         'files': {

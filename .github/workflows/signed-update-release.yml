@@ -1,0 +1,211 @@
+name: Signed Update Release
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/signed-update-release.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Ensure Android scaffold
+        run: flutter create . --platforms=android --org=ir.befrest --project-name=befrest
+
+      - name: Configure Android SDK and desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 37")
+          s = s.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 35")
+          if "isCoreLibraryDesugaringEnabled = true" not in s:
+              s = s.replace(
+                  "compileOptions {",
+                  "compileOptions {\n        isCoreLibraryDesugaringEnabled = true",
+                  1,
+              )
+          dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
+          if dep not in s:
+              s += '\n\ndependencies {\n    ' + dep + '\n}\n'
+          p.write_text(s)
+          PY
+
+      - name: Download previous signing kit
+        uses: actions/download-artifact@v4
+        with:
+          name: befrest-1.1.0+101-signing-kit
+          path: previous-signing
+          github-token: ${{ github.token }}
+          repository: sahandse/beftest
+          run-id: 37588009856
+
+      - name: Restore previous signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing-restored
+
+          INNER_ZIP="$(find previous-signing -type f -name 'befrest-signing-kit-1.1.0+101.zip' | head -1)"
+          test -n "$INNER_ZIP"
+          unzip -q "$INNER_ZIP" -d signing-restored
+
+          SECRETS_FILE="$(find signing-restored -type f -name 'GITHUB-SECRETS.txt' | head -1)"
+          KEYSTORE_FILE="$(find signing-restored -type f -name 'befrest-release.jks' | head -1)"
+          test -n "$SECRETS_FILE"
+          test -n "$KEYSTORE_FILE"
+
+          STORE_PASS="$(grep '^ANDROID_KEYSTORE_PASSWORD=' "$SECRETS_FILE" | cut -d= -f2-)"
+          KEY_ALIAS="$(grep '^ANDROID_KEY_ALIAS=' "$SECRETS_FILE" | cut -d= -f2-)"
+          KEY_PASS="$(grep '^ANDROID_KEY_PASSWORD=' "$SECRETS_FILE" | cut -d= -f2-)"
+
+          test -n "$STORE_PASS"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASS"
+
+          echo "::add-mask::$STORE_PASS"
+          echo "::add-mask::$KEY_PASS"
+
+          cp "$KEYSTORE_FILE" android/app/befrest-release.jks
+
+          {
+            echo "STORE_PASS=$STORE_PASS"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASS=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure release signing
+        shell: bash
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASS
+          keyPassword=$KEY_PASS
+          keyAlias=$KEY_ALIAS
+          storeFile=befrest-release.jks
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+
+          imports = """import java.util.Properties
+          import java.io.FileInputStream
+
+          """
+          if not s.startswith("import java.util.Properties"):
+              s = imports + s
+
+          bootstrap = """val keystoreProperties = Properties()
+          val keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+          }
+
+          """
+          if "val keystoreProperties = Properties()" not in s:
+              s = s.replace("android {", bootstrap + "android {", 1)
+
+          if "signingConfigs {" not in s:
+              s = s.replace(
+                  "    buildTypes {",
+                  """    signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["keyPassword"] as String
+                      storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+                      storePassword = keystoreProperties["storePassword"] as String
+                  }
+              }
+
+              buildTypes {""",
+                  1,
+              )
+
+          if 'signingConfig = signingConfigs.getByName("debug")' in s:
+              s = s.replace(
+                  'signingConfig = signingConfigs.getByName("debug")',
+                  'signingConfig = signingConfigs.getByName("release")',
+              )
+
+          p.write_text(s)
+          PY
+
+      - name: Remove generated default test
+        run: rm -f test/widget_test.dart
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build signed APK
+        run: flutter build apk --release
+
+      - name: Build signed AAB
+        run: flutter build appbundle --release
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Verify signing certificate continuity
+        shell: bash
+        run: |
+          keytool -list -v             -keystore android/app/befrest-release.jks             -storepass "$STORE_PASS"             -alias "$KEY_ALIAS"             | tee certificate-current.txt
+
+          grep -q "C2:D9:A0:D6:DF:FF:55:F1:6B:C4:DD:C9:DD:49:BE:09:00:1C:BB:A6:CB:7F:A6:DD:47:C0:B7:1A:63:04:AB:2F" certificate-current.txt
+
+      - name: Rename release outputs
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk befrest-1.1.1+102-signed.apk
+          cp build/app/outputs/bundle/release/app-release.aab befrest-1.1.1+102-signed.aab
+          sha256sum befrest-1.1.1+102-signed.apk befrest-1.1.1+102-signed.aab > SHA256SUMS.txt
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: befrest-1.1.1+102-signed-apk
+          path: befrest-1.1.1+102-signed.apk
+
+      - name: Upload signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: befrest-1.1.1+102-signed-aab
+          path: befrest-1.1.1+102-signed.aab
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: befrest-1.1.1+102-checksums
+          path: SHA256SUMS.txt

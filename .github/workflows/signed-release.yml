@@ -26,6 +26,9 @@ jobs:
       - name: Ensure Android scaffold
         run: flutter create . --platforms=android --org=ir.befrest --project-name=befrest
 
+      - name: Install Android SDK 37
+        run: yes | sdkmanager "platforms;android-37" >/dev/null
+
       - name: Align Android SDK
         run: |
           python3 - <<'PY'
@@ -139,7 +142,8 @@ jobs:
 
       - name: Verify APK signature
         run: |
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4

@@ -7,6 +7,7 @@ class NearbyDevice {
   final DeviceType type;
   final String fingerprint;
   final bool supportsResume;
+  final bool supportsAppUpdates;
 
   const NearbyDevice({
     required this.alias,
@@ -15,5 +16,6 @@ class NearbyDevice {
     required this.type,
     required this.fingerprint,
     this.supportsResume = false,
+    this.supportsAppUpdates = false,
   });
 }

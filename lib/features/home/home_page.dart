@@ -813,7 +813,10 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(
         builder: (_) => Directionality(
           textDirection: TextDirection.rtl,
-          child: ReceivePage(settings: widget.settings),
+          child: ReceivePage(
+            settings: widget.settings,
+            onNetworkRestart: _restartNetwork,
+          ),
         ),
       ),
     );

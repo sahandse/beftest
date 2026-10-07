@@ -52,6 +52,9 @@ class DiscoveryService {
           supportsResume: ((data['features'] as List?) ?? const [])
               .map((e) => e.toString())
               .contains('resume-v1'),
+          supportsAppUpdates: ((data['features'] as List?) ?? const [])
+              .map((e) => e.toString())
+              .contains('app-updates-v1'),
         );
         _devices[remoteFingerprint] = remote;
         _controller.add(_devices.values.toList(growable: false));
@@ -96,7 +99,7 @@ class DiscoveryService {
       'download': false,
       'announce': announce,
       'app': 'befrest',
-      'features': const ['resume-v1', 'queue-v1'],
+      'features': const ['resume-v1', 'queue-v1', 'app-updates-v1'],
     }));
     _socket?.send(payload, InternetAddress(multicastAddress), port);
   }
@@ -129,7 +132,7 @@ class DiscoveryService {
         'protocol': 'https',
         'download': false,
         'app': 'befrest',
-        'features': const ['resume-v1', 'queue-v1'],
+        'features': const ['resume-v1', 'queue-v1', 'app-updates-v1'],
       }));
       final res = await req.close().timeout(const Duration(seconds: 2));
       await res.drain();

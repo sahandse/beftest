@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/app_settings.dart';
+import '../direct/direct_mode_page.dart';
 
 Future<String?> _localIpv4() async {
   final interfaces = await NetworkInterface.list(
@@ -25,10 +26,12 @@ Future<String?> _localIpv4() async {
 
 class ReceivePage extends StatefulWidget {
   final AppSettings settings;
+  final Future<void> Function()? onNetworkRestart;
 
   const ReceivePage({
     super.key,
     required this.settings,
+    this.onNetworkRestart,
   });
 
   @override
@@ -84,6 +87,25 @@ class _ReceivePageState extends State<ReceivePage>
     setState(() {});
   }
 
+  Future<void> _openDirectMode() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: DirectModePage(
+            role: DirectModeRole.receiver,
+            onConnected: widget.onNetworkRestart,
+          ),
+        ),
+      ),
+    );
+    if (mounted) {
+      _refreshQr();
+      setState(() {});
+    }
+  }
+
   void _toggleQr() {
     HapticFeedback.lightImpact();
     setState(() => _showQr = !_showQr);
@@ -125,6 +147,8 @@ class _ReceivePageState extends State<ReceivePage>
           qrPayload: _qrPayload,
           onToggleQr: _toggleQr,
         ),
+        const SizedBox(height: 12),
+        _DirectModeReceiveCard(onTap: _openDirectMode),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -501,6 +525,63 @@ class _InfoPill extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class _DirectModeReceiveCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _DirectModeReceiveCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Material(
+      color: cs.tertiaryContainer,
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: cs.onTertiaryContainer.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.wifi_tethering_rounded),
+              ),
+              const SizedBox(width: 13),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'اتصال مستقیم',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'بدون Wi‑Fi مشترک؛ گوشی فرستنده مستقیم وصل می‌شود',
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_left_rounded),
+            ],
+          ),
+        ),
       ),
     );
   }

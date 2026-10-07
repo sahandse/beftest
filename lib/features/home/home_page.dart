@@ -798,8 +798,6 @@ class _HomePageState extends State<HomePage> {
               SendCategory.files,
               providedPaths: paths,
             ),
-            onRefreshDevices: _restartNetwork,
-            onOpenReceive: _openReceive,
           ),
         ),
       ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/app_settings.dart';
@@ -34,13 +35,26 @@ class ReceivePage extends StatefulWidget {
   State<ReceivePage> createState() => _ReceivePageState();
 }
 
-class _ReceivePageState extends State<ReceivePage> {
+class _ReceivePageState extends State<ReceivePage>
+    with SingleTickerProviderStateMixin {
   late Future<String> _qrPayload;
+  late final AnimationController _radarController;
+  bool _showQr = false;
 
   @override
   void initState() {
     super.initState();
     _refreshQr();
+    _radarController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _radarController.dispose();
+    super.dispose();
   }
 
   void _refreshQr() {
@@ -60,6 +74,7 @@ class _ReceivePageState extends State<ReceivePage> {
   }
 
   Future<void> _toggleQuickReceive() async {
+    HapticFeedback.selectionClick();
     if (widget.settings.isQuickReceiveActive) {
       await widget.settings.disableQuickReceive();
     } else {
@@ -69,10 +84,15 @@ class _ReceivePageState extends State<ReceivePage> {
     setState(() {});
   }
 
+  void _toggleQr() {
+    HapticFeedback.lightImpact();
+    setState(() => _showQr = !_showQr);
+  }
+
   String _quickReceiveSubtitle() {
     final until = widget.settings.quickReceiveUntil;
     if (!widget.settings.isQuickReceiveActive || until == null) {
-      return 'برای ۵ دقیقه درخواست‌های شبکه محلی را سریع بپذیر.';
+      return 'درخواست‌های شبکه محلی را برای ۵ دقیقه سریع بپذیر';
     }
 
     final remaining = until.difference(DateTime.now());
@@ -83,111 +103,337 @@ class _ReceivePageState extends State<ReceivePage> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final quick = widget.settings.isQuickReceiveActive;
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+
+    final radar = _ReceiveRadar(
+      animation: _radarController,
+      active: quick,
+      alias: widget.settings.alias,
+    );
+
+    final controls = Column(
+      children: [
+        _QuickReceiveCard(
+          active: quick,
+          subtitle: _quickReceiveSubtitle(),
+          onTap: _toggleQuickReceive,
+        ),
+        const SizedBox(height: 12),
+        _ConnectionCard(
+          showQr: _showQr,
+          qrPayload: _qrPayload,
+          onToggleQr: _toggleQr,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Expanded(
+              child: _InfoPill(
+                icon: Icons.wifi_rounded,
+                title: 'شبکه محلی',
+                subtitle: 'بدون اینترنت',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _InfoPill(
+                icon: widget.settings.pinEnabled
+                    ? Icons.lock_outline_rounded
+                    : Icons.lock_open_rounded,
+                title: widget.settings.pinEnabled ? 'PIN فعال' : 'PIN غیرفعال',
+                subtitle: widget.settings.pinEnabled
+                    ? 'محافظت روشن'
+                    : 'دریافت ساده',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('دریافت'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(30),
-                color: quick
-                    ? cs.secondaryContainer
-                    : cs.primaryContainer,
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 84,
-                    height: 84,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+          child: wide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: radar,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 6,
+                      child: ListView(
+                        children: [controls],
+                      ),
+                    ),
+                  ],
+                )
+              : ListView(
+                  children: [
+                    SizedBox(height: 370, child: radar),
+                    const SizedBox(height: 14),
+                    controls,
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceiveRadar extends StatelessWidget {
+  final Animation<double> animation;
+  final bool active;
+  final String alias;
+
+  const _ReceiveRadar({
+    required this.animation,
+    required this.active,
+    required this.alias,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final fg = active ? cs.onSecondaryContainer : cs.onPrimaryContainer;
+    final bg = active ? cs.secondaryContainer : cs.primaryContainer;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(44),
+          topLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+          bottomLeft: Radius.circular(44),
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: animation,
+            builder: (context, _) {
+              return Stack(
+                alignment: Alignment.center,
+                children: List.generate(3, (index) {
+                  final phase = (animation.value + index / 3) % 1;
+                  final size = 92 + (phase * 190);
+                  return Container(
+                    width: size,
+                    height: size,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: cs.surface,
+                      border: Border.all(
+                        color: fg.withValues(
+                          alpha: (1 - phase) * .18,
+                        ),
+                        width: 2,
+                      ),
                     ),
-                    child: Icon(
-                      quick
-                          ? Icons.bolt_rounded
-                          : Icons.south_west_rounded,
-                      size: 38,
+                  );
+                }),
+              );
+            },
+          ),
+          Container(
+            width: 116,
+            height: 116,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: fg.withValues(alpha: .10),
+            ),
+            child: Icon(
+              active ? Icons.bolt_rounded : Icons.south_west_rounded,
+              size: 50,
+              color: fg,
+            ),
+          ),
+          Positioned(
+            left: 26,
+            right: 26,
+            bottom: 28,
+            child: Column(
+              children: [
+                Text(
+                  active ? 'دریافت سریع روشن است' : 'آماده دریافت',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.5,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  alias,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: fg.withValues(alpha: .72),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickReceiveCard extends StatelessWidget {
+  final bool active;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _QuickReceiveCard({
+    required this.active,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Material(
+      color: active ? cs.secondaryContainer : cs.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: active
+                      ? cs.onSecondaryContainer.withValues(alpha: .10)
+                      : cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  active ? Icons.flash_off_rounded : Icons.bolt_rounded,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      active ? 'خاموش کردن دریافت سریع' : 'دریافت سریع',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    quick ? 'دریافت سریع فعال' : 'آماده دریافت',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.settings.alias,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    quick
-                        ? 'درخواست‌های شبکه محلی تا پایان زمان سریع پذیرفته می‌شوند.'
-                        : 'دستگاه فرستنده باید روی همین شبکه محلی باشد.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const Icon(Icons.chevron_left_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectionCard extends StatelessWidget {
+  final bool showQr;
+  final Future<String> qrPayload;
+  final VoidCallback onToggleQr;
+
+  const _ConnectionCard({
+    required this.showQr,
+    required this.qrPayload,
+    required this.onToggleQr,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 6,
             ),
-            const SizedBox(height: 18),
-            FilledButton.tonalIcon(
-              onPressed: _toggleQuickReceive,
-              icon: Icon(
-                quick ? Icons.flash_off_rounded : Icons.bolt_rounded,
-              ),
-              label: Text(
-                quick ? 'خاموش‌کردن دریافت سریع' : 'دریافت سریع برای ۵ دقیقه',
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _quickReceiveSubtitle(),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(22),
+            leading: Container(
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                color: cs.surfaceContainerLow,
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: const Icon(Icons.qr_code_2_rounded),
+            ),
+            title: const Text(
+              'اتصال با QR',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: const Text('برای اتصال مستقیم بین دو دستگاه'),
+            trailing: AnimatedRotation(
+              turns: showQr ? .5 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: const Icon(Icons.keyboard_arrow_down_rounded),
+            ),
+            onTap: onToggleQr,
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 260),
+            firstCurve: Curves.easeOut,
+            secondCurve: Curves.easeOut,
+            crossFadeState: showQr
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
               child: Column(
                 children: [
-                  const Text(
-                    'اتصال با QR',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(24),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(12),
                       child: FutureBuilder<String>(
-                        future: _qrPayload,
+                        future: qrPayload,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) {
                             return const SizedBox(
-                              width: 210,
-                              height: 210,
+                              width: 190,
+                              height: 190,
                               child: Center(
                                 child: CircularProgressIndicator(),
                               ),
@@ -195,50 +441,34 @@ class _ReceivePageState extends State<ReceivePage> {
                           }
                           return QrImageView(
                             data: snapshot.data!,
-                            size: 210,
+                            size: 190,
                             backgroundColor: Colors.white,
                           );
                         },
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'در دستگاه فرستنده روی «اسکن QR» بزن.',
-                    textAlign: TextAlign.center,
+                  const SizedBox(height: 10),
+                  Text(
+                    'در دستگاه فرستنده «اسکن QR» را بزن',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
-            const _StatusTile(
-              icon: Icons.wifi_rounded,
-              title: 'شبکه محلی',
-              subtitle: 'انتقال بدون نیاز به اینترنت',
-            ),
-            const SizedBox(height: 10),
-            _StatusTile(
-              icon: widget.settings.pinEnabled
-                  ? Icons.lock_outline_rounded
-                  : Icons.lock_open_rounded,
-              title: widget.settings.pinEnabled ? 'PIN فعال' : 'PIN غیرفعال',
-              subtitle: widget.settings.pinEnabled
-                  ? 'ارسال‌کننده باید PIN را وارد کند.'
-                  : 'می‌توانی از تنظیمات PIN را فعال کنی.',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StatusTile extends StatelessWidget {
+class _InfoPill extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
 
-  const _StatusTile({
+  const _InfoPill({
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -247,27 +477,28 @@ class _StatusTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
         color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: Row(
+      child: Column(
         children: [
-          CircleAvatar(child: Icon(icon)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(subtitle),
-              ],
+          Icon(icon, size: 24),
+          const SizedBox(height: 9),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
             ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),

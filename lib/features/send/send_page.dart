@@ -2,9 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/transfer_session_controller.dart';
+import '../../core/app_inventory_service.dart';
 import '../../network/nearby_device.dart';
 import '../../network/transfer_models.dart';
 import 'qr_scanner_page.dart';
+
+typedef CheckAppUpdates = Future<List<PeerAppUpdate>> Function(
+  NearbyDevice device,
+);
+
+typedef ReceiveAppUpdates = Future<void> Function(
+  NearbyDevice device,
+  List<PeerAppUpdate> updates,
+  void Function(PeerAppUpdate update, int received, int? total) onProgress,
+);
 
 enum SendCategory {
   photos,
@@ -22,6 +33,8 @@ class SendPage extends StatefulWidget {
   final TransferSessionController sessionController;
   final Set<String> trustedFingerprints;
   final VoidCallback? onOpenHistory;
+  final CheckAppUpdates? onCheckAppUpdates;
+  final ReceiveAppUpdates? onReceiveAppUpdates;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -38,6 +51,8 @@ class SendPage extends StatefulWidget {
     required this.sessionController,
     this.trustedFingerprints = const <String>{},
     this.onOpenHistory,
+    this.onCheckAppUpdates,
+    this.onReceiveAppUpdates,
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,
@@ -51,6 +66,10 @@ class _SendPageState extends State<SendPage> {
   late List<NearbyDevice> _devices;
   SendCategory? _selectedCategory;
   bool _queueExpanded = false;
+  final Map<String, List<PeerAppUpdate>> _appUpdates = {};
+  final Set<String> _checkedUpdatePeers = {};
+  final Set<String> _checkingUpdatePeers = {};
+  final Set<String> _receivingUpdatePeers = {};
 
   @override
   void initState() {
@@ -59,6 +78,266 @@ class _SendPageState extends State<SendPage> {
     if (widget.sharedPaths.isNotEmpty) {
       _selectedCategory = SendCategory.files;
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final device in _devices) {
+        if (widget.trustedFingerprints.contains(device.fingerprint)) {
+          _checkUpdates(device, silent: true);
+        }
+      }
+    });
+  }
+
+  Future<void> _checkUpdates(
+    NearbyDevice device, {
+    bool silent = false,
+  }) async {
+    final callback = widget.onCheckAppUpdates;
+    if (callback == null ||
+        _checkingUpdatePeers.contains(device.fingerprint)) {
+      return;
+    }
+
+    setState(() => _checkingUpdatePeers.add(device.fingerprint));
+    try {
+      final updates = await callback(device);
+      if (!mounted) return;
+      setState(() {
+        _appUpdates[device.fingerprint] = updates;
+        _checkedUpdatePeers.add(device.fingerprint);
+      });
+      if (!silent && updates.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${device.alias} بروزرسانی جدیدی ندارد.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('بررسی بروزرسانی‌های ${device.alias} انجام نشد.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _checkingUpdatePeers.remove(device.fingerprint));
+      }
+    }
+  }
+
+  Future<void> _showAppUpdates(
+    NearbyDevice device,
+    List<PeerAppUpdate> updates,
+  ) async {
+    final receiver = widget.onReceiveAppUpdates;
+    if (receiver == null || updates.isEmpty) return;
+
+    final selected = <String>{
+      for (final item in updates) item.packageName,
+    };
+    final progress = <String, double>{};
+    var receiving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  4,
+                  18,
+                  18 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 560),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'بروزرسانی برنامه‌ها',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text('${updates.length} مورد'),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'نسخه‌های جدیدتر از ${device.alias}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: updates.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 7),
+                          itemBuilder: (context, index) {
+                            final update = updates[index];
+                            final value = progress[update.packageName];
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Column(
+                                children: [
+                                  CheckboxListTile(
+                                    value: selected.contains(update.packageName),
+                                    contentPadding: EdgeInsets.zero,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    onChanged: receiving
+                                        ? null
+                                        : (checked) {
+                                            setSheetState(() {
+                                              if (checked == true) {
+                                                selected.add(update.packageName);
+                                              } else {
+                                                selected.remove(
+                                                  update.packageName,
+                                                );
+                                              }
+                                            });
+                                          },
+                                    title: Text(
+                                      update.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${update.currentVersion} ← ${update.remoteVersion}',
+                                      textDirection: TextDirection.ltr,
+                                    ),
+                                  ),
+                                  if (value != null) ...[
+                                    const SizedBox(height: 4),
+                                    LinearProgressIndicator(value: value),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: receiving || selected.isEmpty
+                              ? null
+                              : () async {
+                                  final chosen = updates
+                                      .where(
+                                        (item) => selected.contains(
+                                          item.packageName,
+                                        ),
+                                      )
+                                      .toList(growable: false);
+                                  setSheetState(() => receiving = true);
+                                  setState(
+                                    () => _receivingUpdatePeers
+                                        .add(device.fingerprint),
+                                  );
+                                  try {
+                                    await receiver(
+                                      device,
+                                      chosen,
+                                      (update, received, total) {
+                                        final fraction = total == null ||
+                                                total <= 0
+                                            ? null
+                                            : (received / total)
+                                                .clamp(0.0, 1.0);
+                                        if (!sheetContext.mounted) return;
+                                        setSheetState(() {
+                                          if (fraction != null) {
+                                            progress[update.packageName] =
+                                                fraction;
+                                          }
+                                        });
+                                      },
+                                    );
+                                    if (!sheetContext.mounted) return;
+                                    Navigator.pop(sheetContext);
+                                    if (mounted) {
+                                      HapticFeedback.mediumImpact();
+                                      ScaffoldMessenger.of(this.context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '${chosen.length} بروزرسانی دریافت شد.',
+                                          ),
+                                        ),
+                                      );
+                                      _checkUpdates(device, silent: true);
+                                    }
+                                  } catch (error) {
+                                    if (!sheetContext.mounted) return;
+                                    setSheetState(() => receiving = false);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(this.context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'دریافت بروزرسانی‌ها کامل نشد.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(
+                                        () => _receivingUpdatePeers
+                                            .remove(device.fingerprint),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: receiving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
+                                )
+                              : const Icon(Icons.download_rounded),
+                          label: Text(
+                            receiving
+                                ? 'در حال دریافت…'
+                                : 'دریافت ${selected.length} بروزرسانی',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _scanQr() async {
@@ -333,6 +612,20 @@ class _SendPageState extends State<SendPage> {
                         )
                         .toList(growable: false),
                   ),
+                if (_devices.isNotEmpty &&
+                    widget.onCheckAppUpdates != null) ...[
+                  const SizedBox(height: 24),
+                  _AppUpdatesSection(
+                    devices: _devices,
+                    trustedFingerprints: widget.trustedFingerprints,
+                    updates: _appUpdates,
+                    checkedPeers: _checkedUpdatePeers,
+                    checkingPeers: _checkingUpdatePeers,
+                    receivingPeers: _receivingUpdatePeers,
+                    onCheck: (device) => _checkUpdates(device),
+                    onOpen: _showAppUpdates,
+                  ),
+                ],
                 if (session.items.isNotEmpty)
                   const SizedBox(height: 112),
               ],
@@ -340,6 +633,186 @@ class _SendPageState extends State<SendPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class _AppUpdatesSection extends StatelessWidget {
+  final List<NearbyDevice> devices;
+  final Set<String> trustedFingerprints;
+  final Map<String, List<PeerAppUpdate>> updates;
+  final Set<String> checkedPeers;
+  final Set<String> checkingPeers;
+  final Set<String> receivingPeers;
+  final ValueChanged<NearbyDevice> onCheck;
+  final void Function(
+    NearbyDevice device,
+    List<PeerAppUpdate> updates,
+  ) onOpen;
+
+  const _AppUpdatesSection({
+    required this.devices,
+    required this.trustedFingerprints,
+    required this.updates,
+    required this.checkedPeers,
+    required this.checkingPeers,
+    required this.receivingPeers,
+    required this.onCheck,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.system_update_alt_rounded),
+              SizedBox(width: 9),
+              Text(
+                'بروزرسانی برنامه‌ها',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'نسخه برنامه‌های مشترک بین دو گوشی را مقایسه کن.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          ...devices.map((device) {
+            final peerUpdates =
+                updates[device.fingerprint] ?? const <PeerAppUpdate>[];
+            final checked = checkedPeers.contains(device.fingerprint);
+            final checking = checkingPeers.contains(device.fingerprint);
+            final receiving = receivingPeers.contains(device.fingerprint);
+            final trusted =
+                trustedFingerprints.contains(device.fingerprint);
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Material(
+                color: cs.surfaceContainer,
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: checking || receiving
+                      ? null
+                      : peerUpdates.isNotEmpty
+                          ? () => onOpen(device, peerUpdates)
+                          : () => onCheck(device),
+                  child: Padding(
+                    padding: const EdgeInsets.all(13),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: peerUpdates.isNotEmpty
+                                ? cs.tertiaryContainer
+                                : cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            peerUpdates.isNotEmpty
+                                ? Icons.download_for_offline_rounded
+                                : Icons.system_update_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      device.alias,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  if (trusted) ...[
+                                    const SizedBox(width: 5),
+                                    const Icon(
+                                      Icons.verified_rounded,
+                                      size: 15,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                checking
+                                    ? 'در حال بررسی…'
+                                    : receiving
+                                        ? 'در حال دریافت…'
+                                        : peerUpdates.isNotEmpty
+                                            ? '${peerUpdates.length} بروزرسانی موجود'
+                                            : checked
+                                                ? 'همه برنامه‌های مشترک بروزند'
+                                                : trusted
+                                                    ? 'بررسی خودکار'
+                                                    : 'برای بررسی بزن',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (checking || receiving)
+                          const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                            ),
+                          )
+                        else if (peerUpdates.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: cs.tertiaryContainer,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              '${peerUpdates.length}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          )
+                        else
+                          const Icon(Icons.chevron_left_rounded),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

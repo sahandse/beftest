@@ -39,7 +39,7 @@ jobs:
           from pathlib import Path
           p = Path("android/app/build.gradle.kts")
           s = p.read_text()
-          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+          s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 37")
           s = s.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 35")
           if "isCoreLibraryDesugaringEnabled = true" not in s:
               s = s.replace(

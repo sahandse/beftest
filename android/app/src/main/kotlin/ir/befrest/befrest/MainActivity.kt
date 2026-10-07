@@ -1,6 +1,14 @@
 package ir.befrest.befrest
 
 import android.content.Intent
+import android.net.wifi.p2p.WifiP2pManager
+import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pConfig
+import android.net.NetworkInfo
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.os.Build
+import android.Manifest
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
@@ -16,8 +24,13 @@ class MainActivity : FlutterActivity() {
     private val appExportChannelName = "ir.befrest/app_export"
     private val shareChannelName = "ir.befrest/share_intent"
     private val networkChannelName = "ir.befrest/network"
+    private val directModeChannelName = "ir.befrest/direct_mode"
 
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var p2pManager: WifiP2pManager? = null
+    private var p2pChannel: WifiP2pManager.Channel? = null
+    private var p2pReceiver: BroadcastReceiver? = null
+    private var pendingPeerResult: MethodChannel.Result? = null
 
     private var shareChannel: MethodChannel? = null
     private val pendingSharedPaths = mutableListOf<String>()
@@ -96,6 +109,140 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+
+        setupWifiDirect()
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            directModeChannelName
+        ).setMethodCallHandler { call, result ->
+            val manager = p2pManager
+            val channel = p2pChannel
+            if (manager == null || channel == null) {
+                result.error("P2P_UNAVAILABLE", "Wi-Fi Direct is unavailable", null)
+                return@setMethodCallHandler
+            }
+
+            when (call.method) {
+                "sdkInt" -> result.success(Build.VERSION.SDK_INT)
+
+                "discoverPeers" -> {
+                    try {
+                        pendingPeerResult?.error(
+                            "DISCOVERY_REPLACED",
+                            "A newer discovery request replaced this one",
+                            null
+                        )
+                        pendingPeerResult = result
+                        manager.discoverPeers(
+                            channel,
+                            object : WifiP2pManager.ActionListener {
+                                override fun onSuccess() {
+                                    // Peer results arrive through WIFI_P2P_PEERS_CHANGED_ACTION.
+                                }
+
+                                override fun onFailure(reason: Int) {
+                                    pendingPeerResult = null
+                                    result.error(
+                                        "P2P_DISCOVERY_FAILED",
+                                        "Wi-Fi Direct discovery failed: $reason",
+                                        null
+                                    )
+                                }
+                            }
+                        )
+                    } catch (error: SecurityException) {
+                        pendingPeerResult = null
+                        result.error(
+                            "P2P_PERMISSION",
+                            error.message ?: "Nearby Wi-Fi permission is required",
+                            null
+                        )
+                    }
+                }
+
+                "createGroup" -> {
+                    try {
+                        manager.createGroup(
+                            channel,
+                            object : WifiP2pManager.ActionListener {
+                                override fun onSuccess() = result.success(true)
+                                override fun onFailure(reason: Int) {
+                                    result.error(
+                                        "P2P_GROUP_FAILED",
+                                        "Unable to create Wi-Fi Direct group: $reason",
+                                        null
+                                    )
+                                }
+                            }
+                        )
+                    } catch (error: SecurityException) {
+                        result.error("P2P_PERMISSION", error.message, null)
+                    }
+                }
+
+                "connectPeer" -> {
+                    val address = call.argument<String>("deviceAddress")
+                    if (address.isNullOrBlank()) {
+                        result.error("INVALID_PEER", "Peer address is missing", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val config = WifiP2pConfig().apply {
+                            deviceAddress = address
+                        }
+                        manager.connect(
+                            channel,
+                            config,
+                            object : WifiP2pManager.ActionListener {
+                                override fun onSuccess() = result.success(true)
+                                override fun onFailure(reason: Int) {
+                                    result.error(
+                                        "P2P_CONNECT_FAILED",
+                                        "Unable to connect to peer: $reason",
+                                        null
+                                    )
+                                }
+                            }
+                        )
+                    } catch (error: SecurityException) {
+                        result.error("P2P_PERMISSION", error.message, null)
+                    }
+                }
+
+                "connectionInfo" -> {
+                    try {
+                        manager.requestConnectionInfo(channel) { info ->
+                            result.success(
+                                mapOf(
+                                    "groupFormed" to info.groupFormed,
+                                    "isGroupOwner" to info.isGroupOwner,
+                                    "groupOwnerAddress" to
+                                        (info.groupOwnerAddress?.hostAddress ?: "")
+                                )
+                            )
+                        }
+                    } catch (error: SecurityException) {
+                        result.error("P2P_PERMISSION", error.message, null)
+                    }
+                }
+
+                "removeGroup" -> {
+                    manager.removeGroup(
+                        channel,
+                        object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = result.success(true)
+                            override fun onFailure(reason: Int) {
+                                result.success(false)
+                            }
+                        }
+                    )
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             networkChannelName
@@ -160,6 +307,58 @@ class MainActivity : FlutterActivity() {
         }
 
         processShareIntent(intent, notifyFlutter = false)
+    }
+
+
+    private fun setupWifiDirect() {
+        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+            ?: return
+        p2pManager = manager
+        val channel = manager.initialize(this, mainLooper, null)
+        p2pChannel = channel
+
+        val filter = IntentFilter().apply {
+            addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
+            addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+        }
+
+        p2pReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
+                        val pending = pendingPeerResult ?: return
+                        try {
+                            manager.requestPeers(channel) { peers ->
+                                val items = peers.deviceList.map { device ->
+                                    mapOf(
+                                        "name" to
+                                            (device.deviceName.ifBlank { "Android" }),
+                                        "deviceAddress" to device.deviceAddress,
+                                        "status" to device.status
+                                    )
+                                }
+                                pendingPeerResult = null
+                                pending.success(items)
+                            }
+                        } catch (error: SecurityException) {
+                            pendingPeerResult = null
+                            pending.error("P2P_PERMISSION", error.message, null)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                p2pReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(p2pReceiver, filter)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -257,6 +456,25 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            pendingPeerResult?.error(
+                "P2P_CLOSED",
+                "Wi-Fi Direct screen was closed",
+                null
+            )
+            pendingPeerResult = null
+            p2pReceiver?.let {
+                try {
+                    unregisterReceiver(it)
+                } catch (_: Exception) {
+                }
+            }
+            p2pReceiver = null
+            p2pManager = null
+            p2pChannel = null
+        } catch (_: Exception) {
+        }
+
         try {
             if (multicastLock?.isHeld == true) {
                 multicastLock?.release()

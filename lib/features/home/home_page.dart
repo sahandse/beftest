@@ -53,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   List<NearbyDevice> _devices = const [];
   Set<String> _trustedFingerprints = <String>{};
   Map<String, String> _pendingRelativePaths = const {};
+  String? _networkError;
 
   @override
   void initState() {
@@ -252,7 +253,23 @@ class _HomePageState extends State<HomePage> {
         fingerprint: _identity.fingerprint,
         identity: _identity,
       );
-    } catch (_) {}
+      if (mounted) {
+        setState(() => _networkError = null);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _networkError = error.toString());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'شبکه محلی بفرست راه‌اندازی نشد؛ Wi‑Fi را بررسی کن و دوباره تلاش کن.',
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _restartNetwork() async {
@@ -504,7 +521,7 @@ class _HomePageState extends State<HomePage> {
       await TransferNotifications.failed(peer: device.alias);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('انتقال کامل نشد؛ امکان ادامه وجود دارد.')),
+          SnackBar(content: Text(_transferErrorMessage(error))),
         );
       }
     } finally {
@@ -600,6 +617,33 @@ class _HomePageState extends State<HomePage> {
       SendCategory.files,
       providedPaths: [path],
     );
+  }
+
+  String _transferErrorMessage(Object error) {
+    final value = error.toString();
+
+    if (error is HandshakeException ||
+        value.contains('CERTIFICATE') ||
+        value.contains('Handshake')) {
+      return 'اتصال امن با دستگاه مقصد برقرار نشد. هر دو گوشی را یک‌بار ببند و دوباره باز کن.';
+    }
+
+    if (error is SocketException ||
+        value.contains('Connection refused') ||
+        value.contains('timed out') ||
+        value.contains('Network is unreachable')) {
+      return 'دستگاه مقصد در شبکه در دسترس نیست. هر دو گوشی باید روی یک Wi‑Fi یا Hotspot مشترک باشند.';
+    }
+
+    if (value.contains('403') || value.contains('FORBIDDEN')) {
+      return 'دریافت روی دستگاه مقصد رد شد.';
+    }
+
+    if (value.contains('CHECKSUM_MISMATCH')) {
+      return 'فایل کامل نرسید؛ دوباره ارسال کن.';
+    }
+
+    return 'انتقال انجام نشد. اتصال دو گوشی را بررسی کن و دوباره بزن.';
   }
 
   String _sizeText(int bytes) {
@@ -753,6 +797,35 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+              if (_networkError != null) ...[
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.wifi_off_rounded,
+                        color: cs.onErrorContainer,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'اتصال شبکه محلی آماده نیست. Wi‑Fi را روشن کن و از تنظیمات «راه‌اندازی دوباره شبکه» را بزن.',
+                          style: TextStyle(
+                            color: cs.onErrorContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               Expanded(
                 child: horizontal
                     ? Row(

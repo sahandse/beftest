@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -585,6 +586,7 @@ class _HomePageState extends State<HomePage> {
       background: cs.tertiaryContainer,
       foreground: cs.onTertiaryContainer,
       onTap: _openSend,
+      accent: true,
     );
 
     return Scaffold(
@@ -604,8 +606,10 @@ class _HomePageState extends State<HomePage> {
                           const Text(
                             'بفرست',
                             style: TextStyle(
-                              fontSize: 27,
+                              fontSize: 29,
+                              height: 1,
                               fontWeight: FontWeight.w900,
+                              letterSpacing: -0.7,
                             ),
                           ),
                           Text(
@@ -676,13 +680,14 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _ActionPane extends StatelessWidget {
+class _ActionPane extends StatefulWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final Color background;
   final Color foreground;
   final VoidCallback onTap;
+  final bool accent;
 
   const _ActionPane({
     required this.title,
@@ -691,70 +696,149 @@ class _ActionPane extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.onTap,
+    this.accent = false,
   });
 
   @override
+  State<_ActionPane> createState() => _ActionPaneState();
+}
+
+class _ActionPaneState extends State<_ActionPane> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  void _activate() {
+    HapticFeedback.lightImpact();
+    widget.onTap();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(34),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Stack(
-          children: [
-            Positioned(
-              left: -20,
-              bottom: -28,
-              child: Icon(
-                icon,
-                size: 180,
-                color: foreground.withValues(alpha: .07),
+    final borderRadius = BorderRadius.only(
+      topRight: const Radius.circular(42),
+      topLeft: Radius.circular(widget.accent ? 24 : 42),
+      bottomRight: Radius.circular(widget.accent ? 24 : 42),
+      bottomLeft: const Radius.circular(42),
+    );
+
+    return AnimatedScale(
+      scale: _pressed ? .985 : 1,
+      duration: const Duration(milliseconds: 130),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: widget.background,
+        borderRadius: borderRadius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _activate,
+          onTapDown: (_) => _setPressed(true),
+          onTapCancel: () => _setPressed(false),
+          onTapUp: (_) => _setPressed(false),
+          child: Stack(
+            children: [
+              Positioned(
+                left: -28,
+                bottom: -42,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: .82, end: 1),
+                  duration: const Duration(milliseconds: 520),
+                  curve: Curves.easeOutBack,
+                  builder: (context, value, child) => Transform.scale(
+                    scale: value,
+                    child: child,
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    size: 210,
+                    color: widget.foreground.withValues(alpha: .075),
+                  ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(26),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 62,
-                    height: 62,
-                    decoration: BoxDecoration(
-                      color: foreground.withValues(alpha: .1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: foreground, size: 30),
+              PositionedDirectional(
+                top: 24,
+                end: 24,
+                child: Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    color: widget.foreground.withValues(alpha: .10),
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  const Spacer(),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 31,
-                      fontWeight: FontWeight.w900,
-                    ),
+                  child: Icon(
+                    widget.icon,
+                    color: widget.foreground,
+                    size: 31,
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: foreground.withValues(alpha: .78),
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      color: foreground,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.all(26),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Spacer(),
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        color: widget.foreground,
+                        fontSize: 34,
+                        height: .98,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -.7,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      widget.subtitle,
+                      style: TextStyle(
+                        color: widget.foreground.withValues(alpha: .76),
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 13,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: widget.foreground.withValues(alpha: .10),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'باز کردن',
+                                style: TextStyle(
+                                  color: widget.foreground,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.arrow_back_rounded,
+                                size: 17,
+                                color: widget.foreground,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

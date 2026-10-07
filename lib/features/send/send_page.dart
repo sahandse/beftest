@@ -268,7 +268,8 @@ class _SendPageState extends State<SendPage> {
                                                 total <= 0
                                             ? null
                                             : (received / total)
-                                                .clamp(0.0, 1.0);
+                                                .clamp(0.0, 1.0)
+                                                .toDouble();
                                         if (!sheetContext.mounted) return;
                                         setSheetState(() {
                                           if (fraction != null) {

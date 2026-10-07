@@ -46,6 +46,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
         type: DeviceType.mobile,
         fingerprint: fingerprint,
         supportsResume: features.contains('resume-v1'),
+        supportsAppUpdates: features.contains('app-updates-v1'),
       );
 
       Navigator.pop(context, device);

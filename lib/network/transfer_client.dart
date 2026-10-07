@@ -4,6 +4,7 @@ import 'dart:io';
 import 'nearby_device.dart';
 import 'transfer_models.dart';
 import '../core/tls_identity.dart';
+import '../core/app_inventory_service.dart';
 
 class TransferClient {
   final TlsIdentity identity;
@@ -287,6 +288,138 @@ class TransferClient {
     }
 
     throw HttpException('RESUME_FAILED: $lastError');
+  }
+
+
+  Future<List<PeerAppUpdate>> compareAppUpdates({
+    required NearbyDevice device,
+    required String alias,
+    required String fingerprint,
+    required List<InstalledAppVersion> localApps,
+  }) async {
+    final client = _clientFor(device);
+    try {
+      final uri = Uri.parse(
+        'https://${device.ip}:${device.port}/api/befrest/v1/apps/compare',
+      );
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'info': {
+          'alias': alias,
+          'fingerprint': fingerprint,
+        },
+        'apps': [
+          for (final app in localApps) app.toJson(),
+        ],
+      }));
+
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('APP_COMPARE_${response.statusCode}');
+      }
+
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final updates = (data['updates'] as List?) ?? const [];
+      return updates
+          .whereType<Map>()
+          .map(
+            (item) => PeerAppUpdate.fromJson(
+              item.cast<String, dynamic>(),
+            ),
+          )
+          .where((item) => item.packageName.isNotEmpty)
+          .toList(growable: false);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<Map<String, String>> prepareAppUpdates({
+    required NearbyDevice device,
+    required String alias,
+    required String fingerprint,
+    required List<PeerAppUpdate> updates,
+  }) async {
+    final client = _clientFor(device);
+    try {
+      final uri = Uri.parse(
+        'https://${device.ip}:${device.port}/api/befrest/v1/apps/prepare',
+      );
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'info': {
+          'alias': alias,
+          'fingerprint': fingerprint,
+        },
+        'packages': updates.map((item) => item.packageName).toList(),
+      }));
+
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+
+      if (response.statusCode == HttpStatus.forbidden) {
+        throw const HttpException('APP_UPDATE_REJECTED');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('APP_PREPARE_${response.statusCode}');
+      }
+
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return ((data['tokens'] as Map?) ?? const {})
+          .map(
+            (key, value) => MapEntry(
+              key.toString(),
+              value.toString(),
+            ),
+          );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> downloadAppUpdate({
+    required NearbyDevice device,
+    required String packageName,
+    required String token,
+    required File target,
+    required void Function(int received, int? total) onProgress,
+  }) async {
+    final client = _clientFor(device);
+    try {
+      final uri = Uri.parse(
+        'https://${device.ip}:${device.port}/api/befrest/v1/apps/download'
+        '?package=${Uri.encodeQueryComponent(packageName)}'
+        '&token=${Uri.encodeQueryComponent(token)}',
+      );
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain();
+        throw HttpException('APP_DOWNLOAD_${response.statusCode}');
+      }
+
+      await target.parent.create(recursive: true);
+      final sink = target.openWrite();
+      var received = 0;
+      final total = response.contentLength >= 0
+          ? response.contentLength
+          : null;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress(received, total);
+        }
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> cancel({

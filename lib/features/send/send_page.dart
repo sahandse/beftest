@@ -8,6 +8,7 @@ import '../../core/app_inventory_service.dart';
 import '../../network/nearby_device.dart';
 import '../../network/transfer_models.dart';
 import 'qr_scanner_page.dart';
+import '../direct/direct_mode_page.dart';
 
 typedef CheckAppUpdates = Future<List<PeerAppUpdate>> Function(
   NearbyDevice device,
@@ -388,6 +389,21 @@ class _SendPageState extends State<SendPage> {
     });
   }
 
+  Future<void> _openDirectMode() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: DirectModePage(
+            role: DirectModeRole.sender,
+            onConnected: widget.onRefreshDevices,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickCategory(SendCategory category) async {
     final picker = widget.onPickCategory;
     if (picker == null || _pickingCategory || widget.sessionController.isActive) {
@@ -697,6 +713,7 @@ class _SendPageState extends State<SendPage> {
                   _DevicesEmptyState(
                     onRefresh: widget.onRefreshDevices,
                     onScanQr: session.isActive ? null : _scanQr,
+                    onDirect: session.isActive ? null : _openDirectMode,
                   )
                 else
                   Wrap(
@@ -1112,10 +1129,12 @@ class _DeviceBubble extends StatelessWidget {
 class _DevicesEmptyState extends StatefulWidget {
   final Future<void> Function()? onRefresh;
   final VoidCallback? onScanQr;
+  final VoidCallback? onDirect;
 
   const _DevicesEmptyState({
     this.onRefresh,
     this.onScanQr,
+    this.onDirect,
   });
 
   @override
@@ -1211,6 +1230,17 @@ class _DevicesEmptyStateState extends State<_DevicesEmptyState> {
               ],
             ],
           ),
+          if (widget.onDirect != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.onDirect,
+                icon: const Icon(Icons.wifi_tethering_rounded),
+                label: const Text('اتصال مستقیم بدون Wi‑Fi مشترک'),
+              ),
+            ),
+          ],
         ],
       ),
     );

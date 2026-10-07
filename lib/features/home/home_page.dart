@@ -690,6 +690,7 @@ class _HomePageState extends State<HomePage> {
           textDirection: TextDirection.rtl,
           child: SendPage(
             devices: _devices,
+            devicesStream: _discovery.devicesStream,
             sessionController: _transferSession,
             trustedFingerprints: _trustedFingerprints,
             onOpenHistory: _openHistory,

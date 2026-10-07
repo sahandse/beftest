@@ -535,6 +535,20 @@ class _HomePageState extends State<HomePage> {
     return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
+  void _openHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: HistoryPage(
+            onRetry: _retryHistoryItem,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openSend({List<String> sharedPaths = const []}) {
     Navigator.push(
       context,
@@ -545,6 +559,7 @@ class _HomePageState extends State<HomePage> {
             devices: _devices,
             sessionController: _transferSession,
             trustedFingerprints: _trustedFingerprints,
+            onOpenHistory: _openHistory,
             onSend: _sendTo,
             sharedPaths: sharedPaths,
             onSendShared: (device, paths) => _sendTo(
@@ -638,19 +653,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     IconButton(
                       tooltip: 'تاریخچه',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => Directionality(
-                              textDirection: TextDirection.rtl,
-                              child: HistoryPage(
-                                onRetry: _retryHistoryItem,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                      onPressed: _openHistory,
                       icon: const Icon(Icons.history_rounded),
                     ),
                     IconButton.filledTonal(

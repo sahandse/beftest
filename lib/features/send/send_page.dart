@@ -81,7 +81,8 @@ class _SendPageState extends State<SendPage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       for (final device in _devices) {
-        if (widget.trustedFingerprints.contains(device.fingerprint)) {
+        if (device.supportsAppUpdates &&
+            widget.trustedFingerprints.contains(device.fingerprint)) {
           _checkUpdates(device, silent: true);
         }
       }
@@ -612,11 +613,13 @@ class _SendPageState extends State<SendPage> {
                         )
                         .toList(growable: false),
                   ),
-                if (_devices.isNotEmpty &&
+                if (_devices.any((device) => device.supportsAppUpdates) &&
                     widget.onCheckAppUpdates != null) ...[
                   const SizedBox(height: 24),
                   _AppUpdatesSection(
-                    devices: _devices,
+                    devices: _devices
+                        .where((device) => device.supportsAppUpdates)
+                        .toList(growable: false),
                     trustedFingerprints: widget.trustedFingerprints,
                     updates: _appUpdates,
                     checkedPeers: _checkedUpdatePeers,

@@ -21,6 +21,7 @@ class SendPage extends StatefulWidget {
   final List<NearbyDevice> devices;
   final TransferSessionController sessionController;
   final Set<String> trustedFingerprints;
+  final VoidCallback? onOpenHistory;
   final Future<void> Function(
     NearbyDevice device,
     SendCategory category,
@@ -36,6 +37,7 @@ class SendPage extends StatefulWidget {
     required this.devices,
     required this.sessionController,
     this.trustedFingerprints = const <String>{},
+    this.onOpenHistory,
     required this.onSend,
     this.sharedPaths = const [],
     this.onSendShared,
@@ -223,6 +225,7 @@ class _SendPageState extends State<SendPage> {
                     formatEta: _formatEta,
                     statusText: _statusText,
                     statusIcon: _statusIcon,
+                    onOpenHistory: widget.onOpenHistory,
                   ),
                 ),
           body: SafeArea(
@@ -594,6 +597,7 @@ class _FloatingTransferCard extends StatelessWidget {
   final String Function(Duration? value) formatEta;
   final String Function(TransferStatus status) statusText;
   final IconData Function(TransferStatus status) statusIcon;
+  final VoidCallback? onOpenHistory;
 
   const _FloatingTransferCard({
     required this.controller,
@@ -603,6 +607,7 @@ class _FloatingTransferCard extends StatelessWidget {
     required this.formatEta,
     required this.statusText,
     required this.statusIcon,
+    this.onOpenHistory,
   });
 
   @override
@@ -722,13 +727,26 @@ class _FloatingTransferCard extends StatelessWidget {
                       ],
                     )
                   else if (controller.items.isNotEmpty)
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
-                        onPressed: controller.clear,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('فایل بیشتری بفرست'),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: controller.clear,
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('فایل بیشتر'),
+                          ),
+                        ),
+                        if (onOpenHistory != null) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: onOpenHistory,
+                              icon: const Icon(Icons.history_rounded),
+                              label: const Text('تاریخچه'),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   const SizedBox(height: 8),
                   ConstrainedBox(

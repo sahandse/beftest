@@ -448,10 +448,14 @@ class _HomePageState extends State<HomePage> {
         peer: device.alias,
         files: files,
       );
-      await TransferBackgroundService.start(
-        peer: device.alias,
-        filesCount: files.length,
-      );
+      try {
+        await TransferBackgroundService.start(
+          peer: device.alias,
+          filesCount: files.length,
+        );
+      } catch (_) {
+        // Background notification must never block the actual transfer.
+      }
       final sent = <String, int>{};
 
       await _transfer.send(
@@ -526,7 +530,11 @@ class _HomePageState extends State<HomePage> {
       }
     } finally {
       _transferSession.finish();
-      await TransferBackgroundService.stop();
+      try {
+        await TransferBackgroundService.stop();
+      } catch (_) {
+        // Transfer result is independent from notification cleanup.
+      }
     }
   }
 

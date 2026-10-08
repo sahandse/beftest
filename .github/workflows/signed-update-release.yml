@@ -1,4 +1,5 @@
 name: Signed Update Release
+# release-trigger: 1.2.0+103-final
 
 on:
   push:

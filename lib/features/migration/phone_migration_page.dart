@@ -41,6 +41,8 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
   bool _loadingDraft = true;
   MigrationDraft? _draft;
   bool _sending = false;
+  int _step = 0;
+  final Map<SendCategory, List<String>> _picked = {};
   final Set<SendCategory> _selected = {
     SendCategory.photos,
     SendCategory.videos,
@@ -88,6 +90,10 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     HapticFeedback.selectionClick();
     setState(() {
       _prepared = List<String>.from(draft.paths);
+      _picked
+        ..clear()
+        ..[SendCategory.files] = List<String>.from(draft.paths);
+      _step = 2;
     });
   }
 
@@ -148,31 +154,41 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     }
   }
 
-  Future<void> _prepare() async {
-    if (_preparing || _selected.isEmpty) return;
+  List<String> get _allPickedPaths => _picked.values
+      .expand((paths) => paths)
+      .toList(growable: false);
 
-    setState(() {
-      _preparing = true;
-      _prepared = const [];
-    });
-
-    final all = <String>[];
+  Future<void> _pickOneCategory(SendCategory category) async {
+    if (_preparing) return;
+    HapticFeedback.selectionClick();
+    setState(() => _preparing = true);
     try {
-      for (final category in _categories) {
-        if (!_selected.contains(category)) continue;
-        final paths = await widget.onPickCategory(category);
-        all.addAll(paths);
-        if (!mounted) return;
-        setState(() => _prepared = List<String>.from(all));
-      }
-      if (all.isNotEmpty) {
-        await _draftStore.save(all);
-        final draft = await _draftStore.load();
-        if (mounted) setState(() => _draft = draft);
-      }
+      final paths = await widget.onPickCategory(category);
+      if (!mounted) return;
+      setState(() {
+        if (paths.isEmpty) {
+          _picked.remove(category);
+        } else {
+          _picked[category] = paths;
+        }
+        _prepared = _allPickedPaths;
+      });
     } finally {
       if (mounted) setState(() => _preparing = false);
     }
+  }
+
+  Future<void> _continueToTransfer() async {
+    final paths = _allPickedPaths;
+    if (paths.isEmpty) return;
+    await _draftStore.save(paths);
+    final draft = await _draftStore.load();
+    if (!mounted) return;
+    setState(() {
+      _prepared = paths;
+      _draft = draft;
+      _step = 2;
+    });
   }
 
   Future<void> _send(NearbyDevice device) async {
@@ -285,9 +301,11 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
             ),
             const SizedBox(height: 18),
             if (_oldPhone) ...[
+              _MigrationStepHeader(step: _step),
+              const SizedBox(height: 16),
               if (_loadingDraft)
                 const LinearProgressIndicator()
-              else if (_draft != null) ...[
+              else if (_draft != null && _step == 0) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -328,6 +346,7 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
                 ),
                 const SizedBox(height: 16),
               ],
+              if (_step == 0) ...[
               Row(
                 children: [
                   const Expanded(
@@ -403,22 +422,88 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _preparing || _selected.isEmpty ? null : _prepare,
-                  icon: _preparing
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.2),
-                        )
-                      : const Icon(Icons.inventory_2_outlined),
-                  label: Text(
-                    _preparing
-                        ? 'در حال آماده‌سازی…'
-                        : 'انتخاب و آماده‌سازی محتوا',
-                  ),
+                  onPressed: _selected.isEmpty
+                      ? null
+                      : () => setState(() => _step = 1),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  label: const Text('ادامه و انتخاب محتوا'),
                 ),
               ),
-              if (_prepared.isNotEmpty) ...[
+              ],
+              if (_step == 1) ...[
+                const Text(
+                  'محتوای هر دسته را انتخاب کن',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'هر بخش را جدا باز کن؛ دیگر انتخاب‌گرها پشت‌سرهم نمایش داده نمی‌شوند.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                ..._categories.where(_selected.contains).map((category) {
+                  final count = _picked[category]?.length ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: count > 0
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(22),
+                      child: ListTile(
+                        leading: Icon(_icon(category)),
+                        title: Text(
+                          _label(category),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(
+                          count == 0
+                              ? 'هنوز انتخاب نشده'
+                              : '${count} مورد انتخاب شده',
+                        ),
+                        trailing: Icon(
+                          count > 0
+                              ? Icons.check_circle_rounded
+                              : Icons.chevron_left_rounded,
+                        ),
+                        onTap: _preparing
+                            ? null
+                            : () => _pickOneCategory(category),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => setState(() => _step = 0),
+                        child: const Text('قبلی'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _allPickedPaths.isEmpty
+                            ? null
+                            : _continueToTransfer,
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        label: Text(
+                          _allPickedPaths.isEmpty
+                              ? 'اول محتوا انتخاب کن'
+                              : 'ادامه • ${_allPickedPaths.length} مورد',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (_step == 2 && _prepared.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Text(
                   '${_prepared.length} مورد آماده انتقال',
@@ -506,6 +591,65 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+class _MigrationStepHeader extends StatelessWidget {
+  final int step;
+
+  const _MigrationStepHeader({required this.step});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const titles = ['دسته‌ها', 'محتوا', 'انتقال'];
+
+    return Row(
+      children: List.generate(3, (index) {
+        final active = index <= step;
+        return Expanded(
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? cs.primary : cs.surfaceContainerHighest,
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: TextStyle(
+                    color: active ? cs.onPrimary : cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  titles[index],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight:
+                        index == step ? FontWeight.w900 : FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (index < 2)
+                Container(
+                  width: 12,
+                  height: 2,
+                  color: active ? cs.primary : cs.outlineVariant,
+                ),
+            ],
+          ),
+        );
+      }),
     );
   }
 }

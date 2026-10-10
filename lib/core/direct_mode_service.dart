@@ -47,14 +47,16 @@ class DirectModeService {
   static const MethodChannel _channel =
       MethodChannel('ir.befrest/direct_mode');
 
-  Future<bool> requestPermission() async {
+  Future<PermissionStatus> requestPermissionStatus() async {
     final sdk = await _channel.invokeMethod<int>('sdkInt') ?? 0;
     if (sdk >= 33) {
-      final status = await Permission.nearbyWifiDevices.request();
-      return status.isGranted;
+      return Permission.nearbyWifiDevices.request();
     }
+    return Permission.locationWhenInUse.request();
+  }
 
-    final status = await Permission.locationWhenInUse.request();
+  Future<bool> requestPermission() async {
+    final status = await requestPermissionStatus();
     return status.isGranted;
   }
 

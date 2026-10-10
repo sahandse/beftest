@@ -18,6 +18,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
   final Set<String> _selectedPackages = <String>{};
   bool _exporting = false;
   int _exportedCount = 0;
+  bool _showSelectedOnly = false;
 
   @override
   void initState() {
@@ -103,7 +104,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
   @override
   Widget build(BuildContext context) {
     final query = _query.trim().toLowerCase();
-    final visible = query.isEmpty
+    final searched = query.isEmpty
         ? _apps
         : _apps
             .where(
@@ -112,6 +113,13 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                   app.packageName.toLowerCase().contains(query),
             )
             .toList(growable: false);
+    final visible = _showSelectedOnly
+        ? searched
+            .where(
+              (app) => _selectedPackages.contains(app.packageName),
+            )
+            .toList(growable: false)
+        : searched;
 
     return Scaffold(
       appBar: AppBar(
@@ -148,7 +156,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
               child: TextField(
                 enabled: !_exporting,
                 onChanged: (value) => setState(() => _query = value),
@@ -159,6 +167,44 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('همه'),
+                    selected: !_showSelectedOnly,
+                    onSelected: _exporting
+                        ? null
+                        : (_) => setState(() => _showSelectedOnly = false),
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: Text(
+                      'انتخاب‌شده‌ها (${_selectedPackages.length})',
+                    ),
+                    selected: _showSelectedOnly,
+                    onSelected: _exporting
+                        ? null
+                        : (_) => setState(() => _showSelectedOnly = true),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _exporting || _apps.isEmpty
+                        ? null
+                        : () => setState(() {
+                              _selectedPackages
+                                ..clear()
+                                ..addAll(
+                                  _apps.map((app) => app.packageName),
+                                );
+                              _showSelectedOnly = true;
+                            }),
+                    child: const Text('انتخاب همه'),
+                  ),
+                ],
               ),
             ),
             Expanded(

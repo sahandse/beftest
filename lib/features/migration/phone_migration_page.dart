@@ -462,7 +462,7 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
                         subtitle: Text(
                           count == 0
                               ? 'هنوز انتخاب نشده'
-                              : '${count} مورد انتخاب شده',
+                              : '$count مورد انتخاب شده',
                         ),
                         trailing: Icon(
                           count > 0

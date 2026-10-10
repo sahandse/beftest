@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/direct_mode_service.dart';
 
@@ -24,6 +25,7 @@ class _DirectModePageState extends State<DirectModePage> {
   bool _loading = true;
   bool _connecting = false;
   bool _permissionDenied = false;
+  bool _permissionPermanentlyDenied = false;
   List<DirectPeer> _peers = const [];
   String? _message;
 
@@ -37,16 +39,19 @@ class _DirectModePageState extends State<DirectModePage> {
     setState(() {
       _loading = true;
       _permissionDenied = false;
+      _permissionPermanentlyDenied = false;
       _message = null;
     });
 
-    final allowed = await _service.requestPermission();
+    final status = await _service.requestPermissionStatus();
     if (!mounted) return;
 
-    if (!allowed) {
+    if (!status.isGranted) {
       setState(() {
         _loading = false;
         _permissionDenied = true;
+        _permissionPermanentlyDenied = status.isPermanentlyDenied ||
+            status.isRestricted;
       });
       return;
     }
@@ -201,7 +206,10 @@ class _DirectModePageState extends State<DirectModePage> {
             ),
             const SizedBox(height: 16),
             if (_permissionDenied)
-              _PermissionCard(onRetry: _start)
+              _PermissionCard(
+                permanentlyDenied: _permissionPermanentlyDenied,
+                onRetry: _start,
+              )
             else ...[
               if (_message != null)
                 Container(
@@ -255,10 +263,7 @@ class _DirectModePageState extends State<DirectModePage> {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          subtitle: Text(
-                            peer.deviceAddress,
-                            textDirection: TextDirection.ltr,
-                          ),
+                          subtitle: const Text('اتصال مستقیم آماده است'),
                           trailing: _connecting
                               ? const SizedBox(
                                   width: 22,
@@ -290,9 +295,13 @@ class _DirectModePageState extends State<DirectModePage> {
 }
 
 class _PermissionCard extends StatelessWidget {
+  final bool permanentlyDenied;
   final Future<void> Function() onRetry;
 
-  const _PermissionCard({required this.onRetry});
+  const _PermissionCard({
+    required this.permanentlyDenied,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -314,14 +323,25 @@ class _PermissionCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'این دسترسی فقط وقتی Direct Mode را باز می‌کنی درخواست می‌شود و برای پیدا کردن گوشی نزدیک است.',
+          Text(
+            permanentlyDenied
+                ? 'این دسترسی از تنظیمات خاموش شده. برای استفاده از اتصال مستقیم، آن را از تنظیمات برنامه فعال کن.'
+                : 'این دسترسی فقط وقتی Direct Mode را باز می‌کنی درخواست می‌شود و برای پیدا کردن گوشی نزدیک است.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 14),
-          FilledButton(
-            onPressed: onRetry,
-            child: const Text('اجازه بده'),
+          FilledButton.icon(
+            onPressed: permanentlyDenied
+                ? () async => openAppSettings()
+                : onRetry,
+            icon: Icon(
+              permanentlyDenied
+                  ? Icons.settings_rounded
+                  : Icons.wifi_rounded,
+            ),
+            label: Text(
+              permanentlyDenied ? 'باز کردن تنظیمات' : 'اجازه بده',
+            ),
           ),
         ],
       ),

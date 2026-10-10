@@ -146,9 +146,8 @@ class _ReceivePageState extends State<ReceivePage>
           showQr: _showQr,
           qrPayload: _qrPayload,
           onToggleQr: _toggleQr,
+          onDirectMode: _openDirectMode,
         ),
-        const SizedBox(height: 12),
-        _DirectModeReceiveCard(onTap: _openDirectMode),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -388,11 +387,13 @@ class _ConnectionCard extends StatelessWidget {
   final bool showQr;
   final Future<String> qrPayload;
   final VoidCallback onToggleQr;
+  final VoidCallback onDirectMode;
 
   const _ConnectionCard({
     required this.showQr,
     required this.qrPayload,
     required this.onToggleQr,
+    required this.onDirectMode,
   });
 
   @override
@@ -405,7 +406,17 @@ class _ConnectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+            child: Text(
+              'روش اتصال',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ),
           ListTile(
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 18,
@@ -432,6 +443,15 @@ class _ConnectionCard extends StatelessWidget {
             ),
             onTap: onToggleQr,
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: FilledButton.tonalIcon(
+              onPressed: onDirectMode,
+              icon: const Icon(Icons.wifi_tethering_rounded),
+              label: const Text('اتصال مستقیم بدون Wi‑Fi مشترک'),
+            ),
+          ),
+          const SizedBox(height: 8),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 260),
             firstCurve: Curves.easeOut,
@@ -525,63 +545,6 @@ class _InfoPill extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
-      ),
-    );
-  }
-}
-
-
-class _DirectModeReceiveCard extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _DirectModeReceiveCard({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Material(
-      color: cs.tertiaryContainer,
-      borderRadius: BorderRadius.circular(28),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: cs.onTertiaryContainer.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(Icons.wifi_tethering_rounded),
-              ),
-              const SizedBox(width: 13),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'اتصال مستقیم',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'بدون Wi‑Fi مشترک؛ گوشی فرستنده مستقیم وصل می‌شود',
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_left_rounded),
-            ],
-          ),
-        ),
       ),
     );
   }

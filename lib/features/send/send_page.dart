@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -80,6 +81,7 @@ class _SendPageState extends State<SendPage> {
   StreamSubscription<List<NearbyDevice>>? _devicesSubscription;
   SendCategory? _selectedCategory;
   List<String> _selectedPaths = const [];
+  int _selectedBytes = 0;
   bool _pickingCategory = false;
   bool _queueExpanded = false;
   final Map<String, List<PeerAppUpdate>> _appUpdates = {};
@@ -404,6 +406,27 @@ class _SendPageState extends State<SendPage> {
     );
   }
 
+  Future<int> _sumSelectedBytes(List<String> paths) async {
+    var total = 0;
+    for (final path in paths) {
+      try {
+        total += await File(path).length();
+      } catch (_) {}
+    }
+    return total;
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
+  }
+
   Future<void> _pickCategory(SendCategory category) async {
     final picker = widget.onPickCategory;
     if (picker == null || _pickingCategory || widget.sessionController.isActive) {
@@ -415,13 +438,16 @@ class _SendPageState extends State<SendPage> {
       _pickingCategory = true;
       _selectedCategory = category;
       _selectedPaths = const [];
+      _selectedBytes = 0;
     });
 
     try {
       final paths = await picker(category);
+      final bytes = await _sumSelectedBytes(paths);
       if (!mounted) return;
       setState(() {
         _selectedPaths = paths;
+        _selectedBytes = bytes;
         if (paths.isEmpty) {
           _selectedCategory = null;
         }
@@ -646,17 +672,28 @@ class _SendPageState extends State<SendPage> {
                         const Icon(Icons.check_circle_rounded),
                         const SizedBox(width: 11),
                         Expanded(
-                          child: Text(
-                            '${_selectedPaths.length} مورد آماده ارسال • حالا دستگاه مقصد را انتخاب کن',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${_selectedPaths.length} مورد • ${_formatBytes(_selectedBytes)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'آماده ارسال • حالا دستگاه مقصد را انتخاب کن',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
                           ),
                         ),
                         IconButton(
                           tooltip: 'پاک کردن انتخاب',
                           onPressed: () => setState(() {
                             _selectedPaths = const [];
+                            _selectedBytes = 0;
                             _selectedCategory = null;
                           }),
                           icon: const Icon(Icons.close_rounded),

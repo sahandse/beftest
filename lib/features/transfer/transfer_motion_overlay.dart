@@ -107,7 +107,6 @@ class _BlockingTransferIntro extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.direction,
-    this.session,
   });
 
   @override
@@ -193,6 +192,7 @@ class _CompactTransferCapsule extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.direction,
+    this.session,
   });
 
   String _speed(double value) {

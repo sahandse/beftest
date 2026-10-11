@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../network/nearby_device.dart';
 import '../../core/migration_draft_store.dart';
+import '../../core/storage_guard.dart';
 import '../send/send_page.dart';
 
 class PhoneMigrationPage extends StatefulWidget {
@@ -53,6 +55,8 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     SendCategory.folders,
   };
   List<String> _prepared = const [];
+  int _preparedBytes = 0;
+  late Future<StorageCheck> _storageCheck;
 
   static const _categories = [
     SendCategory.photos,
@@ -72,14 +76,39 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
       if (!mounted) return;
       setState(() => _devices = items.toList(growable: false));
     });
+    _storageCheck = StorageGuard.checkForIncoming(0);
     _loadDraft();
+  }
+
+  Future<int> _pathsSize(List<String> paths) async {
+    var total = 0;
+    for (final path in paths) {
+      try {
+        total += await File(path).length();
+      } catch (_) {}
+    }
+    return total;
+  }
+
+  String _sizeText(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
   Future<void> _loadDraft() async {
     final draft = await _draftStore.load();
     if (!mounted) return;
+    final bytes = draft == null ? 0 : await _pathsSize(draft.paths);
+    if (!mounted) return;
     setState(() {
       _draft = draft;
+      _preparedBytes = bytes;
       _loadingDraft = false;
     });
   }
@@ -88,8 +117,11 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     final draft = _draft;
     if (draft == null) return;
     HapticFeedback.selectionClick();
+    final bytes = await _pathsSize(draft.paths);
+    if (!mounted) return;
     setState(() {
       _prepared = List<String>.from(draft.paths);
+      _preparedBytes = bytes;
       _picked
         ..clear()
         ..[SendCategory.files] = List<String>.from(draft.paths);
@@ -183,9 +215,11 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
     if (paths.isEmpty) return;
     await _draftStore.save(paths);
     final draft = await _draftStore.load();
+    final bytes = await _pathsSize(paths);
     if (!mounted) return;
     setState(() {
       _prepared = paths;
+      _preparedBytes = bytes;
       _draft = draft;
       _step = 2;
     });
@@ -505,11 +539,36 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
               ],
               if (_step == 2 && _prepared.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                Text(
-                  '${_prepared.length} مورد آماده انتقال',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.inventory_2_rounded, size: 30),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_prepared.length} مورد آماده انتقال',
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'حجم کل: ${_sizeText(_preparedBytes)}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -553,7 +612,39 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
                     ),
                   ),
               ],
-            ] else
+            ] else ...[
+              FutureBuilder<StorageCheck>(
+                future: _storageCheck,
+                builder: (context, snapshot) {
+                  final check = snapshot.data;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.storage_rounded),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            check == null
+                                ? 'در حال بررسی فضای آزاد…'
+                                : check.known
+                                    ? 'فضای آزاد این گوشی: ${_sizeText(check.freeBytes)}'
+                                    : 'فضای آزاد قابل بررسی نبود',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -588,6 +679,7 @@ class _PhoneMigrationPageState extends State<PhoneMigrationPage> {
                   ],
                 ),
               ),
+            ],
           ],
         ),
       ),

@@ -1267,8 +1267,25 @@ class _DevicesEmptyState extends StatefulWidget {
   State<_DevicesEmptyState> createState() => _DevicesEmptyStateState();
 }
 
-class _DevicesEmptyStateState extends State<_DevicesEmptyState> {
+class _DevicesEmptyStateState extends State<_DevicesEmptyState>
+    with SingleTickerProviderStateMixin {
   bool _refreshing = false;
+  late final AnimationController _radarController;
+
+  @override
+  void initState() {
+    super.initState();
+    _radarController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _radarController.dispose();
+    super.dispose();
+  }
 
   Future<void> _refresh() async {
     final callback = widget.onRefresh;
@@ -1294,27 +1311,46 @@ class _DevicesEmptyStateState extends State<_DevicesEmptyState> {
       ),
       child: Column(
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primaryContainer.withValues(alpha: .45),
-                ),
-              ),
-              Container(
-                width: 62,
-                height: 62,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primaryContainer,
-                ),
-                child: const Icon(Icons.radar_rounded, size: 31),
-              ),
-            ],
+          SizedBox(
+            width: 118,
+            height: 118,
+            child: AnimatedBuilder(
+              animation: _radarController,
+              builder: (context, _) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    ...List.generate(3, (index) {
+                      final phase =
+                          (_radarController.value + index / 3) % 1;
+                      final size = 62 + (phase * 52);
+                      return Container(
+                        width: size,
+                        height: size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: cs.primary.withValues(
+                              alpha: (1 - phase) * .18,
+                            ),
+                            width: 1.6,
+                          ),
+                        ),
+                      );
+                    }),
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: cs.primaryContainer,
+                      ),
+                      child: const Icon(Icons.radar_rounded, size: 31),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
           const SizedBox(height: 15),
           const Text(

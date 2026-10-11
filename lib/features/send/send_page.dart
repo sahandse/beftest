@@ -689,6 +689,14 @@ class _SendPageState extends State<SendPage> {
                             ],
                           ),
                         ),
+                        if (_selectedCategory != null)
+                          IconButton(
+                            tooltip: 'ویرایش انتخاب',
+                            onPressed: _pickingCategory
+                                ? null
+                                : () => _pickCategory(_selectedCategory!),
+                            icon: const Icon(Icons.edit_rounded),
+                          ),
                         IconButton(
                           tooltip: 'پاک کردن انتخاب',
                           onPressed: () => setState(() {

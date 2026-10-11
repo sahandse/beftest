@@ -591,58 +591,11 @@ class _HomePageState extends State<HomePage> {
       HapticFeedback.mediumImpact();
       if (!mounted) return;
       final elapsed = DateTime.now().difference(startedAt);
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle_rounded,
-                  size: 54,
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'انتقال کامل شد',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${files.length} فایل • ${_sizeText(totalBytes)} • ${elapsed.inSeconds} ثانیه',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(sheetContext),
-                        child: const Text('تمام'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.pop(sheetContext);
-                          _openHistory();
-                        },
-                        icon: const Icon(Icons.history_rounded),
-                        label: const Text('تاریخچه'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
+      await _showTransferSuccess(
+        peer: device.alias,
+        filesCount: files.length,
+        totalBytes: totalBytes,
+        elapsed: elapsed,
       );
     } catch (error) {
       if (error.toString().contains('PIN_REQUIRED') && mounted) {

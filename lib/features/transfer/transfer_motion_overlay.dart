@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/transfer_session_controller.dart';
+
 enum TransferVisualDirection { sending, receiving }
 
 enum TransferVisualStyle { packets, cards, pulse, orbit }
@@ -11,12 +13,14 @@ class TransferMotionOverlay extends StatefulWidget {
   final String peer;
   final TransferVisualDirection direction;
   final int itemCount;
+  final TransferSessionController? session;
 
   const TransferMotionOverlay({
     super.key,
     required this.peer,
     required this.direction,
     required this.itemCount,
+    this.session,
   });
 
   @override
@@ -75,6 +79,7 @@ class _TransferMotionOverlayState extends State<TransferMotionOverlay>
               title: _title,
               subtitle: _subtitle,
               direction: widget.direction,
+              session: widget.session,
             )
           : _BlockingTransferIntro(
               key: const ValueKey('intro'),
@@ -102,6 +107,7 @@ class _BlockingTransferIntro extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.direction,
+    this.session,
   });
 
   @override
@@ -178,6 +184,7 @@ class _CompactTransferCapsule extends StatelessWidget {
   final String title;
   final String subtitle;
   final TransferVisualDirection direction;
+  final TransferSessionController? session;
 
   const _CompactTransferCapsule({
     super.key,
@@ -188,9 +195,39 @@ class _CompactTransferCapsule extends StatelessWidget {
     required this.direction,
   });
 
-  @override
-  Widget build(BuildContext context) {
+  String _speed(double value) {
+    if (value <= 0) return '—';
+    if (value < 1024) return '${value.toStringAsFixed(0)} B/s';
+    if (value < 1024 * 1024) {
+      return '${(value / 1024).toStringAsFixed(1)} KB/s';
+    }
+    return '${(value / 1024 / 1024).toStringAsFixed(1)} MB/s';
+  }
+
+  String _eta(Duration? value) {
+    if (value == null) return '';
+    if (value.inSeconds < 60) return '${value.inSeconds} ث';
+    final min = value.inMinutes;
+    final sec = value.inSeconds.remainder(60);
+    return '$min:${sec.toString().padLeft(2, '0')}';
+  }
+
+  Widget _content(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final progress = session?.overallProgress;
+    final items = session?.items ?? const <TransferQueueViewItem>[];
+    TransferQueueViewItem? current;
+    for (final item in items) {
+      if (item.status.name == 'transferring') {
+        current = item;
+        break;
+      }
+    }
+    current ??= items.isEmpty ? null : items.first;
+
+    final speed = session?.totalSpeed ?? 0;
+    final eta = session?.overallEta;
+    final percent = progress == null ? null : (progress * 100).round();
 
     return IgnorePointer(
       child: SafeArea(
@@ -224,18 +261,33 @@ class _CompactTransferCapsule extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14.5,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  current?.fileName ?? title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14.5,
+                                  ),
+                                ),
+                              ),
+                              if (percent != null)
+                                Text(
+                                  '$percent٪',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            subtitle,
+                            speed > 0
+                                ? '${_speed(speed)}${eta == null ? '' : ' • ${_eta(eta)}'}'
+                                : subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall,
@@ -243,7 +295,10 @@ class _CompactTransferCapsule extends StatelessWidget {
                           const SizedBox(height: 6),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: const LinearProgressIndicator(minHeight: 4),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 4,
+                            ),
                           ),
                         ],
                       ),
@@ -261,6 +316,16 @@ class _CompactTransferCapsule extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listenable = session;
+    if (listenable == null) return _content(context);
+    return AnimatedBuilder(
+      animation: listenable,
+      builder: (context, _) => _content(context),
     );
   }
 }

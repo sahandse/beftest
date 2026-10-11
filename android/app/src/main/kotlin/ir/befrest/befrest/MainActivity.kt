@@ -43,6 +43,24 @@ class MainActivity : FlutterActivity() {
             appExportChannelName
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "getApkSizes" -> {
+                    val packages = call.argument<List<String>>("packages") ?: emptyList()
+                    val sizes = mutableMapOf<String, Long>()
+                    for (packageName in packages) {
+                        try {
+                            val appInfo = packageManager.getApplicationInfo(
+                                packageName,
+                                PackageManager.ApplicationInfoFlags.of(0)
+                            )
+                            val source = File(appInfo.sourceDir)
+                            sizes[packageName] = if (source.exists()) source.length() else 0L
+                        } catch (_: Exception) {
+                            sizes[packageName] = 0L
+                        }
+                    }
+                    result.success(sizes)
+                }
+
                 "exportApk" -> {
                     val packageName = call.argument<String>("packageName")
                     val label = call.argument<String>("label") ?: "app"

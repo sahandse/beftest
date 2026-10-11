@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:installed_apps/installed_apps.dart';
 
+enum _AppFilter { all, recent, large, selected }
+
 class AppsPickerPage extends StatefulWidget {
   const AppsPickerPage({super.key});
 
@@ -18,6 +20,8 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
   final Set<String> _selectedPackages = <String>{};
   bool _exporting = false;
   int _exportedCount = 0;
+  _AppFilter _filter = _AppFilter.all;
+  final Map<String, int> _apkSizes = <String, int>{};
   bool _showSelectedOnly = false;
 
   @override
@@ -38,6 +42,39 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
       _apps = apps;
       _loading = false;
     });
+    await _loadApkSizes(apps);
+  }
+
+  Future<void> _loadApkSizes(List<AppInfo> apps) async {
+    try {
+      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'getApkSizes',
+        {
+          'packages': apps.map((app) => app.packageName).toList(growable: false),
+        },
+      );
+      if (!mounted || raw == null) return;
+      setState(() {
+        _apkSizes
+          ..clear()
+          ..addEntries(
+            raw.entries.map(
+              (entry) => MapEntry(
+                entry.key.toString(),
+                (entry.value as num?)?.toInt() ?? 0,
+              ),
+            ),
+          );
+      });
+    } catch (_) {}
+  }
+
+  String _sizeText(int bytes) {
+    if (bytes <= 0) return '—';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    }
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 
   void _toggle(AppInfo app) {
@@ -46,6 +83,25 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
     setState(() {
       if (!_selectedPackages.add(app.packageName)) {
         _selectedPackages.remove(app.packageName);
+      }
+    });
+  }
+
+  void _selectVisible(List<AppInfo> visible) {
+    if (_exporting || visible.isEmpty) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      final allSelected = visible.every(
+        (app) => _selectedPackages.contains(app.packageName),
+      );
+      if (allSelected) {
+        for (final app in visible) {
+          _selectedPackages.remove(app.packageName);
+        }
+      } else {
+        for (final app in visible) {
+          _selectedPackages.add(app.packageName);
+        }
       }
     });
   }
@@ -207,6 +263,71 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                 ],
               ),
             ),
+            if (!_loading)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Column(
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _AppFilterChip(
+                            label: 'همه',
+                            selected: _filter == _AppFilter.all,
+                            onTap: () => setState(() => _filter = _AppFilter.all),
+                          ),
+                          const SizedBox(width: 7),
+                          _AppFilterChip(
+                            label: 'جدیدها',
+                            selected: _filter == _AppFilter.recent,
+                            onTap: () =>
+                                setState(() => _filter = _AppFilter.recent),
+                          ),
+                          const SizedBox(width: 7),
+                          _AppFilterChip(
+                            label: 'حجم بالا',
+                            selected: _filter == _AppFilter.large,
+                            onTap: () => setState(() => _filter = _AppFilter.large),
+                          ),
+                          const SizedBox(width: 7),
+                          _AppFilterChip(
+                            label: 'انتخاب‌شده',
+                            selected: _filter == _AppFilter.selected,
+                            onTap: () =>
+                                setState(() => _filter = _AppFilter.selected),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          '${visible.length} برنامه',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: visible.isEmpty || _exporting
+                              ? null
+                              : () => _selectVisible(visible),
+                          icon: const Icon(Icons.done_all_rounded, size: 18),
+                          label: Text(
+                            visible.isNotEmpty &&
+                                    visible.every(
+                                      (app) => _selectedPackages
+                                          .contains(app.packageName),
+                                    )
+                                ? 'لغو انتخاب همه'
+                                : 'انتخاب همه',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -251,7 +372,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                                           children: [
                                             Text(
                                               app.name,
-                                              maxLines: 1,
+                                              maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.w900,
@@ -259,7 +380,7 @@ class _AppsPickerPageState extends State<AppsPickerPage> {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              '${app.versionName} • ${app.packageName}',
+                                              'نسخه ${app.versionName} • ${_sizeText(_apkSizes[app.packageName] ?? 0)}\n${app.packageName}',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               textDirection:
@@ -316,6 +437,29 @@ class _AppIcon extends StatelessWidget {
         errorBuilder: (_, __, ___) =>
             const CircleAvatar(child: Icon(Icons.android_rounded)),
       ),
+    );
+  }
+}
+
+
+class _AppFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AppFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (_) => onTap(),
     );
   }
 }

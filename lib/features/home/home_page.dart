@@ -674,6 +674,103 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _showTransferSuccess({
+    required String peer,
+    required int filesCount,
+    required int totalBytes,
+    required Duration elapsed,
+  }) async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final cs = Theme.of(sheetContext).colorScheme;
+        final seconds = elapsed.inSeconds < 1 ? 1 : elapsed.inSeconds;
+        return SafeArea(
+          minimum: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, size: 38),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'انتقال کامل شد',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'ارسال به $peer',
+                style: Theme.of(sheetContext).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _TransferSummaryTile(
+                      icon: Icons.insert_drive_file_rounded,
+                      value: '$filesCount',
+                      label: 'فایل',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _TransferSummaryTile(
+                      icon: Icons.data_usage_rounded,
+                      value: _sizeText(totalBytes),
+                      label: 'حجم',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _TransferSummaryTile(
+                      icon: Icons.timer_outlined,
+                      value: '$seconds ث',
+                      label: 'زمان',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _openHistory();
+                      },
+                      icon: const Icon(Icons.history_rounded),
+                      label: const Text('تاریخچه'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: const Text('تمام'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<List<PeerAppUpdate>> _checkPeerAppUpdates(
     NearbyDevice device,
   ) async {
@@ -1030,6 +1127,47 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TransferSummaryTile extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+
+  const _TransferSummaryTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }

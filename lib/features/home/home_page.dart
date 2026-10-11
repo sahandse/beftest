@@ -120,6 +120,9 @@ class _HomePageState extends State<HomePage> {
           peer: peer,
           direction: direction,
           itemCount: itemCount,
+          session: direction == TransferVisualDirection.sending
+              ? _transferSession
+              : null,
         ),
       ),
     );

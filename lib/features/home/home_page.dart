@@ -1181,44 +1181,120 @@ class _MigrationHomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
     return Material(
-      color: cs.secondaryContainer,
-      borderRadius: BorderRadius.circular(28),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(28),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: cs.onSecondaryContainer.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(Icons.phonelink_rounded),
-              ),
-              const SizedBox(width: 13),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'گوشی قدیمی → گوشی جدید',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text('انتقال گروهی و مستقل از ارسال و دریافت عادی'),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_left_rounded),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(30),
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          gradient: LinearGradient(
+            begin: AlignmentDirectional.topStart,
+            end: AlignmentDirectional.bottomEnd,
+            colors: [
+              cs.secondaryContainer,
+              cs.primaryContainer.withValues(alpha: .82),
             ],
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: 92,
+            child: Stack(
+              children: [
+                PositionedDirectional(
+                  end: -8,
+                  top: -18,
+                  child: Icon(
+                    Icons.phone_android_rounded,
+                    size: 106,
+                    color: cs.onSecondaryContainer.withValues(alpha: .06),
+                  ),
+                ),
+                PositionedDirectional(
+                  end: 48,
+                  bottom: -28,
+                  child: Transform.rotate(
+                    angle: -.12,
+                    child: Icon(
+                      Icons.phone_android_rounded,
+                      size: 90,
+                      color: cs.onSecondaryContainer.withValues(alpha: .05),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color:
+                              cs.onSecondaryContainer.withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(19),
+                        ),
+                        child: const Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            PositionedDirectional(
+                              start: 10,
+                              child: Icon(
+                                Icons.phone_android_rounded,
+                                size: 25,
+                              ),
+                            ),
+                            PositionedDirectional(
+                              end: 9,
+                              child: Icon(
+                                Icons.phone_android_rounded,
+                                size: 22,
+                              ),
+                            ),
+                            Icon(Icons.arrow_back_rounded, size: 15),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 13),
+                      const Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'گوشی قدیمی → گوشی جدید',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'انتقال گروهی عکس، ویدیو، فایل و برنامه‌ها',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.chevron_left_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -401,6 +401,7 @@ class _ConnectionCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(28),
@@ -408,98 +409,118 @@ class _ConnectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
-            child: Text(
-              'روش اتصال',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
+          Text(
+            'روش اتصال',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
           ),
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 6,
-            ),
-            leading: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(16),
+          const SizedBox(height: 12),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment<bool>(
+                value: true,
+                icon: Icon(Icons.qr_code_2_rounded),
+                label: Text('QR'),
               ),
-              child: const Icon(Icons.qr_code_2_rounded),
-            ),
-            title: const Text(
-              'اتصال با QR',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            subtitle: const Text('برای اتصال مستقیم بین دو دستگاه'),
-            trailing: AnimatedRotation(
-              turns: showQr ? .5 : 0,
-              duration: const Duration(milliseconds: 220),
-              child: const Icon(Icons.keyboard_arrow_down_rounded),
-            ),
-            onTap: onToggleQr,
+              ButtonSegment<bool>(
+                value: false,
+                icon: Icon(Icons.wifi_tethering_rounded),
+                label: Text('مستقیم'),
+              ),
+            ],
+            selected: {showQr},
+            showSelectedIcon: false,
+            onSelectionChanged: (value) {
+              final next = value.first;
+              if (next != showQr) onToggleQr();
+            },
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: FilledButton.tonalIcon(
-              onPressed: onDirectMode,
-              icon: const Icon(Icons.wifi_tethering_rounded),
-              label: const Text('اتصال مستقیم بدون Wi‑Fi مشترک'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 260),
-            firstCurve: Curves.easeOut,
-            secondCurve: Curves.easeOut,
-            crossFadeState: showQr
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            firstChild: const SizedBox(width: double.infinity),
-            secondChild: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-              child: Column(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: FutureBuilder<String>(
-                        future: qrPayload,
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const SizedBox(
-                              width: 190,
-                              height: 190,
-                              child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-                          return QrImageView(
-                            data: snapshot.data!,
-                            size: 190,
-                            backgroundColor: Colors.white,
-                          );
-                        },
+          const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: showQr
+                ? Column(
+                    key: const ValueKey('qr'),
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: FutureBuilder<String>(
+                            future: qrPayload,
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox(
+                                  width: 190,
+                                  height: 190,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              }
+                              return QrImageView(
+                                data: snapshot.data!,
+                                size: 190,
+                                backgroundColor: Colors.white,
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'در دستگاه فرستنده «اسکن QR» را بزن',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  )
+                : Column(
+                    key: const ValueKey('direct'),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: cs.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(Icons.wifi_tethering_rounded, size: 38),
+                            SizedBox(height: 8),
+                            Text(
+                              'بدون Wi‑Fi مشترک',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'گوشی فرستنده مستقیماً با Wi‑Fi Direct وصل می‌شود.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: onDirectMode,
+                          icon: const Icon(Icons.link_rounded),
+                          label: const Text('شروع اتصال مستقیم'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'در دستگاه فرستنده «اسکن QR» را بزن',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

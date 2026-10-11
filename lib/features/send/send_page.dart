@@ -669,7 +669,7 @@ class _SendPageState extends State<SendPage> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle_rounded),
+                        _SelectionPreview(paths: _selectedPaths),
                         const SizedBox(width: 11),
                         Expanded(
                           child: Column(
@@ -762,6 +762,8 @@ class _SendPageState extends State<SendPage> {
                             device: device,
                             trusted: widget.trustedFingerprints
                                 .contains(device.fingerprint),
+                            updateCount:
+                                _appUpdates[device.fingerprint]?.length ?? 0,
                             disabled: session.isActive,
                             onTap: () => _sendToDevice(device),
                           ),
@@ -1047,15 +1049,73 @@ class _CategoryCard extends StatelessWidget {
   }
 }
 
+class _SelectionPreview extends StatelessWidget {
+  final List<String> paths;
+
+  const _SelectionPreview({required this.paths});
+
+  bool _isImage(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = paths.take(3).toList(growable: false);
+    final cs = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      width: 58,
+      height: 44,
+      child: Stack(
+        children: List.generate(visible.length, (index) {
+          final path = visible[index];
+          final offset = index * 8.0;
+          return PositionedDirectional(
+            start: offset,
+            top: index * 2.0,
+            child: Container(
+              width: 34,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: cs.primary.withValues(alpha: .18),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _isImage(path)
+                  ? Image.file(
+                      File(path),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.insert_drive_file_rounded, size: 17),
+                    )
+                  : const Icon(Icons.insert_drive_file_rounded, size: 17),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
 class _DeviceBubble extends StatelessWidget {
   final NearbyDevice device;
   final bool trusted;
+  final int updateCount;
   final bool disabled;
   final VoidCallback onTap;
 
   const _DeviceBubble({
     required this.device,
     required this.trusted,
+    required this.updateCount,
     required this.disabled,
     required this.onTap,
   });
@@ -1111,6 +1171,35 @@ class _DeviceBubble extends StatelessWidget {
                           child: const Icon(
                             Icons.verified_rounded,
                             size: 13,
+                          ),
+                        ),
+                      ),
+                    if (updateCount > 0)
+                      PositionedDirectional(
+                        end: -8,
+                        top: -7,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 22),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: cs.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: Text(
+                            '$updateCount',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: cs.onErrorContainer,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
                       ),

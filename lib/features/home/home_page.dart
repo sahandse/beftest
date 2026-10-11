@@ -1237,7 +1237,7 @@ class _MigrationHomeCard extends StatelessWidget {
                       Container(
                         width: 38,
                         height: 38,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.white24,
                           shape: BoxShape.circle,
                         ),
